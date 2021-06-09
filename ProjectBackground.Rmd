@@ -1,0 +1,22 @@
+---
+title: "Project Background"
+author: "Emma Jones"
+date: "6/8/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+## Introduction
+
+This project is the culmination of over a decade of work by Virginia DEQ's biomonitoring and Freshwater Probabilistic Monitoring Programs. These  groups have been working towards the development of a more refined Index of Biological Integrity (IBI) since the transition of macroinvertebrate identification from Family level to Genus level in 2009. With EPA support, DEQ is analyzing its datasets (and adding in data from other states where necessary) to determine a method for characterizing macroinvertebrate communities to a lower taxonomic level, in comparison to the current Family level indices.
+
+Where possible, all reports/methods are published to the internal DEQ Connect server to facilitate better project management and ease future final report generation efforts.
+
+## General Project Workflow
+
+Lucy Baker and Jason Hill began the initial exploratory data analysis with EPA staff (Greg Pond, Richard Mitchell, Lou Reynolds, etc.) in February 2021. Emma Jones joined the project in May 2021. This repository picks up where Emma joined the effort. 
+
+Pulling together a complete list of reference and stress biomonitoring sites is the first major task for the team. The rating of samples/stations as ref/stress was conducted by regional biologists and returned to Jason Hill for review and consolidation. This repo holds scripts to pull the raw biological and station information for these sites in InitialDataOrganization.Rmd script. 
