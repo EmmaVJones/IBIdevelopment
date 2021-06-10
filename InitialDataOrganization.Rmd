@@ -43,10 +43,15 @@ These spreadsheets are organized by DEQ region (one spreadsheet per regional off
 As more regional station lists become available, this chunk will fill out with all stations statewide.
 
 ```{r regional ref stress station lists}
+SCRO <- read_excel('data/regionalRefStressStationList/RefStressDataFinal_SCRO.xlsx', sheet = 'JRH_Final_SCRO')
 SWRO <- read_excel('data/regionalRefStressStationList/RefStressDataFinal_SWRO.xlsx', sheet = 'JRH_Final_SWRO')
 VRO <- read_excel('data/regionalRefStressStationList/RefStressDataFinal_VRO.xlsx', sheet = 'JRH_Final_VRO')
+WCRO <- read_excel('data/regionalRefStressStationList/RefStressDataFinal_WCRO.xlsx', sheet = 'JRH_Final_WCRO')
+NRO <- read_excel('data/regionalRefStressStationList/RefStressDataFinal_NRO.xlsx', sheet = 'JRH_Final_NRO')
 
-stations <- bind_rows(SWRO,VRO) %>% 
+#Still missing PRO feedback
+
+stations <- bind_rows(SCRO, SWRO, VRO, WCRO, NRO) %>% 
   rename('StationID' = 'UID') # reserve UID for a concatenation of StationID and sample date
 ```
 
@@ -111,8 +116,6 @@ map_df(dplyr::select(stationsSpatial_withAllData,-BioComment), function(x) sum(i
 
 
 
-
-
 ## Organize benthic information
 
 For this, we will pull in pinned data from the server and transform it to a wide format to match project needs.
@@ -134,7 +137,10 @@ benthics <- pin_get('ejones/benthics', board = 'rsconnect') %>%
   arrange(FinalID) %>%
   pivot_wider(id_cols = c('StationID','BenSampID','Collection Date', 'RepNum'), 
               names_from = FinalID, values_from = Individuals)%>%
-        arrange(`Collection Date`) 
+  mutate(`Collection DateTime` = `Collection Date`,
+         `Collection Date` = as.Date(`Collection Date`)) %>% 
+  dplyr::select(StationID:`Collection Date`, `Collection DateTime`, everything()) %>% 
+  arrange(`Collection Date`) 
 
 ```
 
@@ -142,6 +148,13 @@ benthics <- pin_get('ejones/benthics', board = 'rsconnect') %>%
 
 
 
+
+
+```{r}
+write_csv(stationsSpatial_withAllData, 'data/dataOut/stationsSpatial_withAllData.csv', na="")
+write_csv(benthics, 'data/dataOut/benthics.csv', na="")
+
+```
 
 
 
