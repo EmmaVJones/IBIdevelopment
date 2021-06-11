@@ -166,8 +166,8 @@ Missing watershed, Order, WQS info
 ```{r}
 needWQS <- filter(stationsSpatial_withAllData, is.na(WQS_ID))
 needWatershed <- filter(stationsSpatial_withAllData, is.na(totalArea_sqMile))
-saveRDS(needWQS, 'data/needWQS.RDS')
-saveRDS(needWatershed, 'data/needWatershed.RDS')
+saveRDS(needWQS, 'data/needSpatial/needWQS.RDS')
+saveRDS(needWatershed, 'data/needSpatial/needWatershed.RDS')
 ```
 
 

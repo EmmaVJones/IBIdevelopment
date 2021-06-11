@@ -1,0 +1,30 @@
+---
+title: "Organize Missing Spatial Info"
+author: "Emma Jones"
+date: "6/11/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(tidyverse)
+library(sf)
+library(readxl)
+library(leaflet)
+library(leafpop)
+library(mapview)
+library(inlmisc)
+library(lubridate)
+
+# Bring in missing data categories
+needWQS <- readRDS( 'data/needSpatial/needWQS.RDS')
+needWatershed <- readRDS('data/needSpatial/needWatershed.RDS')
+```
+
+## Watersheds Missing
+
+For this section, we will use existing web scraping techniques to use USGS streamStats API to autodelineate watersheds for stations that need additional landcover information. This script is loosely based on the ConserveVA methodology and will rely upon human review (intern) to verify the 1:24k delineations match the intended watershed.
+
+```{r bring in autodelineation functions}
+source('methods/StreamStatsAutoDelineation.R')
+```
