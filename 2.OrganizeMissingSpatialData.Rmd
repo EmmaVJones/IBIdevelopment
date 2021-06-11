@@ -30,16 +30,17 @@ source('methods/StreamStatsAutoDelineation.R')
 ```
 Begin delineating sites.
 
-Break into chunks to ease processing. Using assessement regions
+Break into chunks to ease processing. Using 50 site blocks
 
 ```{r streamstats delineation}
 
-needWatershedFilter <- filter(needWatershed, ASSESS_REG == 'BRRO')
+needWatershedFilter <- needWatershed[1:50,]
 
 basinData <- streamStats_Delineation(state= 'VA',
                                      longitude = needWatershedFilter$Longitude, 
                                      latitude = needWatershedFilter$Latitude, 
                                      UID = needWatershedFilter$StationID)
+
 ```
 Then we need to organize these files and check they delineated properly.
     

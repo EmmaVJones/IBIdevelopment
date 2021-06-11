@@ -135,7 +135,7 @@ BCG <- read.csv('data/otherProjectData/finalEnvData.csv') %>%
 
 #View(filter(stationsSpatial, ! StationID %in% prob$StationID))
 
-stationsSpatial_withAllData <- left_join(stationsSpatial, bind_rows(prob, BCG), by = 'StationID') %>% 
+stationsSpatial2 <- left_join(stationsSpatial, bind_rows(prob, BCG), by = 'StationID') %>% 
   dplyr::select(JRH_Final_Ref_Cod:StationID, UID, everything())
 ```
 
@@ -145,7 +145,7 @@ We can try to get Order information from EDAS station information. This data is 
 EDASorder <- read_excel('data/otherProjectData/EDAScombinedStations.xlsx') %>% 
   dplyr::select(StationID, EDASOrder = Order)
 
-stationsSpatial_withAllData <- left_join(stationsSpatial_withAllData, EDASorder, by = 'StationID') %>% 
+stationsSpatial2 <- left_join(stationsSpatial2, EDASorder, by = 'StationID') %>% 
   dplyr::select(JRH_Final_Ref_Cod:Order, EDASOrder, everything())
 ```
 
@@ -153,21 +153,21 @@ stationsSpatial_withAllData <- left_join(stationsSpatial_withAllData, EDASorder,
 
 Calculate sum of missing data per field. For WQS information, only pay attention to WQS_ID field as other fields are okay to not have info.
 ```{r}
-map_df(stationsSpatial_withAllData, function(x) sum(is.na(x)))
+map_df(stationsSpatial2, function(x) sum(is.na(x)))
 ```
 
 Missing lat/lng info from CEDS?
 ```{r}
-missing <- filter(stationsSpatial_withAllData, is.na(Latitude))
+missing <- filter(stationsSpatial2, is.na(Latitude))
 ```
 
 Missing watershed, Order, WQS info
 
 ```{r}
-needWQS <- filter(stationsSpatial_withAllData, is.na(WQS_ID))
-needWatershed <- filter(stationsSpatial_withAllData, is.na(totalArea_sqMile))
-saveRDS(needWQS, 'data/needSpatial/needWQS.RDS')
-saveRDS(needWatershed, 'data/needSpatial/needWatershed.RDS')
+needWQS <- filter(stationsSpatial2, is.na(WQS_ID))
+needWatershed <- filter(stationsSpatial2, is.na(totalArea_sqMile))
+#saveRDS(needWQS, 'data/needSpatial/needWQS.RDS')
+#saveRDS(needWatershed, 'data/needSpatial/needWatershed.RDS')
 ```
 
 
@@ -180,12 +180,23 @@ For this, we will pull in pinned data from the server and transform it to a wide
 
 ```{r pinned benthic data}
 benSamps <- pin_get('ejones/benSamps', board = 'rsconnect') %>% 
-  filter(StationID %in% stationsSpatial_withAllData$StationID) %>% 
+  filter(StationID %in% stationsSpatial2$StationID) %>% 
   filter(`Target Count` == 200 & RepNum == 1) %>% # drop rarified samples and only rep 1's for now
+  # first group by StationID and Date to drop duplicate Rep1 samples
+  group_by(StationID, `Collection Date`) %>% 
+  mutate(SampleN = 1:n()) %>% 
+  # look at samples with multiple rep1's
+  # dplyr::select(SampleN, everything()) %>%  
+  # arrange(desc(SampleN))
+  # write.csv(benSamps1, 'multiple rep 1s.csv', row.names = F)
+  filter(! SampleN > 1) %>%  # drop multiple rep 1s before filtering on max 4 samples per site
+  ungroup() %>% 
   group_by(StationID) %>% 
   arrange(desc(`Collection Date`)) %>% 
-  mutate(SampleN = 1:n()) %>%  # number samples from most recent collection
-  filter(SampleN <= 4) # only keep most recent four samples
+  mutate(`Collection Date` = as.Date(`Collection Date`),
+         SampleN = 1:n(),# number samples from most recent collection
+         JulianDate = yday(`Collection Date`)) %>%  
+  filter(SampleN <= 4)  # only keep most recent four samples
 
 benthics <- pin_get('ejones/benthics', board = 'rsconnect') %>% 
   filter(BenSampID %in% benSamps$BenSampID) %>% 
@@ -203,6 +214,17 @@ benthics <- pin_get('ejones/benthics', board = 'rsconnect') %>%
 ```
 
 
+We need to send the nmds all categorical and continuous info in a single dataset, so join the date, gradient, etc. from benSamps to the station info for analysis.
+
+```{r}
+stationsSpatial_withAllData <- left_join(
+  dplyr::select(benSamps, StationID, `Collection Date`, Gradient, Season, JulianDate),
+  stationsSpatial2, by = 'StationID') %>% 
+  mutate(UID = paste(StationID, year(`Collection Date`), Season, sep= '_')) %>% 
+  dplyr::select(DataSource, JRH_Final_Ref_Cod, StationID, UID, everything()) %>% 
+  arrange(StationID, `Collection Date`)
+
+```
 
 
 
