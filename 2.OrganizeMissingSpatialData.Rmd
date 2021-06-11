@@ -28,3 +28,186 @@ For this section, we will use existing web scraping techniques to use USGS strea
 ```{r bring in autodelineation functions}
 source('methods/StreamStatsAutoDelineation.R')
 ```
+Begin delineating sites.
+
+Break into chunks to ease processing. Using assessement regions
+
+```{r streamstats delineation}
+
+needWatershedFilter <- filter(needWatershed, ASSESS_REG == 'BRRO')
+
+basinData <- streamStats_Delineation(state= 'VA',
+                                     longitude = needWatershedFilter$Longitude, 
+                                     latitude = needWatershedFilter$Latitude, 
+                                     UID = needWatershedFilter$StationID)
+```
+Then we need to organize these files and check they delineated properly.
+    
+```{r organize spatial results}
+# organize into appropriate files, lossy move here- automatically removes sites with no data
+watersheds <- basinData$polygon %>%
+  reduce(rbind) %>%
+  arrange(UID)
+points <- basinData$point %>%
+  reduce(rbind) %>%
+  arrange(UID)
+
+saveRDS(watersheds, 'watersheds.RDS')
+saveRDS(points, 'points.RDS')
+```
+
+Run back out to streamstats and get anyone that is missing
+    
+```{r fix missing sites (rerun as necessary)}
+# fix anything that is missing
+if(nrow(points) != nrow(watersheds) | nrow(needWatershed) != nrow(watersheds)){
+  missing <- unique(
+    c(as.character(points$UID[!(points$UID %in% watersheds$UID)]),
+      as.character(needWatershed$StationID[!(needWatershed$StationID %in% watersheds$UID)])))
+  missingDat <- filter(needWatershed, StationID %in% missing)
+  
+  #remove missing site from the paired dataset
+  points <- filter(points, ! UID %in% missing)
+  watersheds <- filter(watersheds, ! UID %in% missing)
+  
+  dat <- streamStats_Delineation(state= 'VA', 
+                                 longitude = missingDat$Long, 
+                                 latitude = missingDat$Lat, 
+                                 UID = missingDat$StationID)
+  
+  watersheds_missing <- dat$polygon %>%
+    reduce(rbind)
+  
+  points_missing <- dat$point %>%
+    reduce(rbind)
+  
+  watersheds <- rbind(watersheds, watersheds_missing) %>%
+    arrange(UID)
+  
+  points <- rbind(points, points_missing) %>%
+    arrange(UID)
+  
+  rm(missingDat); rm(dat); rm(watersheds_missing); rm(points_missing)
+}
+
+```
+
+
+We are going to do manual QA for each watershed. Bring in Probabilistic Monitoring sample frame for stream order information.
+
+```{r visual QA mapping function}
+vafrm <- st_read('data/GIS/vafrm_99_05Albers.shp') %>%
+  st_transform(4326) # change to WGS84 for web mapping
+
+mapMe <- function(watershedChoice, pointChoice, initialData, probFrame){
+  pointChoice <- mutate(pointChoice, StationID = UID) %>%
+    left_join(initialData, by = 'StationID')
+  
+  segments <- suppressWarnings(st_intersection(probFrame, st_buffer(watershedChoice,0))) # buffer by 0 helps with topology issues
+  
+#  # the kelly special
+#  leaflet(watershedChoice) %>%
+#    addProviderTiles(providers$OpenStreetMap, group='Open Street Map') %>%
+#    addProviderTiles(providers$Stamen.Terrain, group='Topo') %>%
+#    addProviderTiles(providers$Esri.WorldImagery,group='Imagery') %>%
+
+  
+  CreateWebMap(maps = c("Topo","Imagery","Hydrography"), collapsed = TRUE) %>%
+    setView(-78, 37.5, zoom=6) %>%
+    addPolygons(data= watershedChoice,  color = 'black', weight = 1,
+                  fillColor='blue', fillOpacity = 0.5,stroke=0.1,
+                  group="Watershed",
+                  popup=leafpop::popupTable(watershedChoice, zcol=c('UID'))) %>%
+    addPolylines(data = segments,  color = 'blue', weight =3,
+                 group="Strahler Info", label = ~STRAHLER,
+                 popup=leafpop::popupTable(segments, zcol=c('STRAHLER'))) %>% hideGroup("Strahler Info") %>%
+    addCircleMarkers(data = pointChoice, color='orange', fillColor='black', radius = 5,
+                     fillOpacity = 0.5,opacity=0.5,weight = 1,stroke=T, group="Station",
+                     label = ~UID,
+                     popup=leafpop::popupTable(pointChoice)) %>%
+    addLayersControl(baseGroups=c("Topo","Imagery","Hydrography"),
+      #baseGroups=c("Topo","Imagery","Hydrography"),
+                       overlayGroups = c('Station',"Strahler Info", 'Watershed'),
+                       options=layersControlOptions(collapsed=T),
+                       position='topleft')
+}
+```
+
+And double check all watersheds are appropriately delineated.
+
+```{r visual QA}
+# Can be reviewed one at a time
+mapMe(watersheds[1,], points[1,], dplyr::select(needWatershed, -UID), vafrm)
+
+# or all at once
+mapMe(watersheds, points, dplyr::select(needWatershed, -UID), vafrm)
+
+```
+
+
+Anything look off? If so, filter out those StationID's before they get saved to a shapefile. You will have to go to streamstats and manually choose the appropriate stream segment, then merge back to full basin watersheds shapefile.
+    
+```{r drop these sites for manual autodelineation}
+# identify problem sites
+dropMe <- c('1AXJI000.38')
+
+# drop the sites identified
+watersheds <- filter(watersheds, ! UID %in% dropMe)
+# note, we are not dropping the DEQ lat/lng from the points file because this is the most accurate location information
+
+# organize lat/lngs for problem sites for delineation on streamstats website
+dropMe <- tibble(StationID = dropMe) %>%
+  left_join(basin, by = 'StationID')
+dropMe
+```
+    
+For the station(s) listed above (if any):
+1. Go to https://streamstats.usgs.gov/ss/
+2. Enter each lat/lng, separated by a comma
+3. Choose the appropriate state (VA)
+4. Delineate: Use the 1:100k strahler stream order from the Order field above to choose the appropriate streamstats (1:24k) stream segment.
+5. Download Basin as a shapefile.
+6. Extract the zip file.
+7. Rename the 'globalwatershed' file to the name of the StationID
+**Pro Tip- select all four files (.dbf, .prj, .shp, .shx), press F2, paste the StationID into one file, press Enter... all renamed **
+8. Move the renamed watershed to GIS/delineations/streamStatsFixes/basinName (make sure there is a folder with the appropriate basin name)
+![directorystructure](methods/directoryStructure.png)
+Now bring back in the manually autodelineated watersheds and combine with the watersheds that passed QA filters.
+    
+```{r bring in watersheds}
+# Where did you save files relative to the working directory?
+savedHere <- 'GIS/delineations/streamStatsFixes/Potomac River Basin'
+
+# read in new watersheds after manual QA
+shapes <- gsub('.prj','',list.files( savedHere, pattern="*.prj", full.names=F))
+filenames <- paste0(savedHere, '/',shapes, '.shp')
+  
+# read in shapefiles and organize
+newSheds <- filenames %>%
+  map(st_read) %>%
+  map2(shapes,~mutate(.x,UID=.y)) %>% # make a StationID column
+  map(~dplyr::select(.,UID)) %>%
+  reduce(rbind) 
+
+# Combine with QAed watersheds
+watersheds <- rbind(watersheds, newSheds) %>%
+  arrange(UID)
+  
+```
+    
+Double check everything looks good in the basin.
+    
+```{r map double check}
+mapMe(watersheds, points, dplyr::select(needWatershed, -UID), vafrm)
+```
+
+Save QAed watersheds and sites as shapefiles.
+    
+```{r save shapefiles}
+st_write(watersheds, paste0('GIS/delineations/', basinName,'_StreamStats_watersheds.shp'))
+st_write(points, paste0('GIS/delineations/', basinName,'_StreamStats_points.shp'))
+
+#basinName <- 'Potomac River Basin'
+#watersheds <- st_read(paste0('GIS/delineations/', basinName,'_StreamStats_watersheds.shp'))
+#points <- st_read(paste0('GIS/delineations/', basinName,'_StreamStats_points.shp'))
+```
