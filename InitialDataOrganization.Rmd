@@ -43,16 +43,44 @@ These spreadsheets are organized by DEQ region (one spreadsheet per regional off
 As more regional station lists become available, this chunk will fill out with all stations statewide.
 
 ```{r regional ref stress station lists}
-SCRO <- read_excel('data/regionalRefStressStationList/RefStressDataFinal_SCRO.xlsx', sheet = 'JRH_Final_SCRO')
-SWRO <- read_excel('data/regionalRefStressStationList/RefStressDataFinal_SWRO.xlsx', sheet = 'JRH_Final_SWRO')
-VRO <- read_excel('data/regionalRefStressStationList/RefStressDataFinal_VRO.xlsx', sheet = 'JRH_Final_VRO')
-WCRO <- read_excel('data/regionalRefStressStationList/RefStressDataFinal_WCRO.xlsx', sheet = 'JRH_Final_WCRO')
-NRO <- read_excel('data/regionalRefStressStationList/RefStressDataFinal_NRO.xlsx', sheet = 'JRH_Final_NRO')
+SCRO <- read_excel('data/regionalRefStressStationList/RefStressDataFinal_SCRO.xlsx', sheet = 'JRH_Final_SCRO') %>%
+  mutate(Coastal = FALSE)
+SWRO <- read_excel('data/regionalRefStressStationList/RefStressDataFinal_SWRO.xlsx', sheet = 'JRH_Final_SWRO') %>%
+  mutate(Coastal = FALSE)
+VRO <- read_excel('data/regionalRefStressStationList/RefStressDataFinal_VRO.xlsx', sheet = 'JRH_Final_VRO') %>%
+  mutate(Coastal = FALSE)
+WCRO <- read_excel('data/regionalRefStressStationList/RefStressDataFinal_WCRO.xlsx', sheet = 'JRH_Final_WCRO') %>%
+  mutate(Coastal = FALSE)
+NRO <- read_excel('data/regionalRefStressStationList/RefStressDataFinal_NRO.xlsx', sheet = 'JRH_Final_NRO') %>%
+  mutate(Coastal = FALSE)
+NROcoast <- read_excel('data/regionalRefStressStationList/RefStressDataFinal_NRO_Coast.xlsx',
+                       sheet = 'JRH_Final_NRO_Coast') %>%
+  mutate(Coastal = TRUE)
+PRO <- read_excel('data/regionalRefStressStationList/RefStressDataFinal_PRO.xlsx', sheet = 'JRH_Final_PRO') %>%
+  mutate(Coastal = FALSE)
+PROcoast <- read_excel('data/regionalRefStressStationList/RefStressDataFinal_PRO_Coast.xlsx',
+                       sheet = 'JRH_Final_Comment_Coast') %>%
+  mutate(Coastal = TRUE)
+TROcoast <- read_excel('data/regionalRefStressStationList/RefStressDataFinal_TRO_Coast.xlsx',
+                       sheet = 'JRH_Final_TRO_Coast2') %>%
+  mutate(Coastal = TRUE)
 
-#Still missing PRO feedback
+# combine and just keep coastal vs not coastal designation
+stations1 <- bind_rows(SCRO, SWRO, VRO, WCRO, NRO, NROcoast, PRO, PROcoast, TROcoast) %>%
+  mutate(StationID = toupper(UID)) %>% # reserve UID for a concatenation of StationID and sample date
+  distinct(StationID, .keep_all = T) %>% 
+  dplyr::select(-UID)
 
-stations <- bind_rows(SCRO, SWRO, VRO, WCRO, NRO) %>% 
-  rename('StationID' = 'UID') # reserve UID for a concatenation of StationID and sample date
+# join coastal info
+stations <- read_excel('data/regionalRefStressStationList/BioSitesAll.xlsx', 'UniqueSitesAllReff') %>% 
+  mutate(StationID = toupper(UID)) %>% # reserve UID for a concatenation of StationID and sample date
+  left_join(dplyr::select(stations1, StationID, Coastal), by ='StationID')%>% 
+  dplyr::select(-UID) %>% 
+  mutate(StationID = case_when(StationID == '5AXNOTC000.04' ~ '5AXNOTc000.04',
+                               TRUE ~ as.character(StationID))) # rename dumb format
+
+#clean up workspace
+rm(SCRO); rm(SWRO); rm(VRO); rm(WCRO); rm(NRO); rm(NROcoast); rm(PRO); rm(PROcoast); rm(TROcoast); rm(stations1)
 ```
 
 
@@ -77,6 +105,20 @@ stationsSpatial <- left_join(stations, stationSpatialPin, by = 'StationID') %>%
   left_join(stationFullPin, by = c('StationID' = 'STATION_ID'))
 ```
 
+make sure one site 
+```{r}
+# write.csv(
+# stationsSpatial %>% 
+#   group_by(StationID) %>% 
+#   mutate(n = n()) %>% 
+#   dplyr::select(n, everything()) %>% 
+#   arrange(desc(n)), 
+# 'JasonLookAtMe.csv')
+```
+
+
+
+
 We also need 1:100k strahler order for these stations, but that information is best not grabbed from the stationFullPin (originally from WQM Stations Full dataset on GIS REST service) as the exact process for identifying strahler order is not known.
 
 This is best grabbed from most recent freshwater probmon wadeable dataset (IR2020) and where data are missing from that look for it in the last statewide BCG tolerance value data organization project (also contains Fairfax, MD, WVA, MAIA, MAHA, EPA, etc. data). There can be multiple rows per StationID in these datasets as each sample year is represented.
@@ -91,10 +133,10 @@ BCG <- read.csv('data/otherProjectData/finalEnvData.csv') %>%
   dplyr::select(StationID, UID, Order, totalArea_sqMile, ELEVMIN:siteRain_inyr) %>% 
   filter(StationID %in% filter(stationsSpatial, ! StationID %in% prob$StationID)$StationID)
 
-View(filter(stationsSpatial, ! StationID %in% prob$StationID))
+#View(filter(stationsSpatial, ! StationID %in% prob$StationID))
 
 stationsSpatial_withAllData <- left_join(stationsSpatial, bind_rows(prob, BCG), by = 'StationID') %>% 
-  dplyr::select(BioComment:StationID, UID, everything())
+  dplyr::select(JRH_Final_Ref_Cod:StationID, UID, everything())
 ```
 
 We can try to get Order information from EDAS station information. This data is generated by the Biologists, so there is not consistency on what scale NHD the information comes from, but it is a start.
@@ -104,16 +146,32 @@ EDASorder <- read_excel('data/otherProjectData/EDAScombinedStations.xlsx') %>%
   dplyr::select(StationID, EDASOrder = Order)
 
 stationsSpatial_withAllData <- left_join(stationsSpatial_withAllData, EDASorder, by = 'StationID') %>% 
-  dplyr::select(BioComment:Order, EDASOrder, everything())
+  dplyr::select(JRH_Final_Ref_Cod:Order, EDASOrder, everything())
 ```
 
 
 
 Calculate sum of missing data per field. For WQS information, only pay attention to WQS_ID field as other fields are okay to not have info.
 ```{r}
-map_df(dplyr::select(stationsSpatial_withAllData,-BioComment), function(x) sum(is.na(x)))
+map_df(stationsSpatial_withAllData, function(x) sum(is.na(x)))
 ```
 
+Missing lat/lng info from CEDS?
+```{r}
+missing <- filter(stationsSpatial_withAllData, is.na(Latitude))
+```
+
+Missing watershed, Order, WQS info
+
+```{r}
+needWQS <- filter(stationsSpatial_withAllData, is.na(WQS_ID))
+needWatershed <- filter(stationsSpatial_withAllData, is.na(totalArea_sqMile))
+saveRDS(needWQS, 'data/needWQS.RDS')
+saveRDS(needWatershed, 'data/needWatershed.RDS')
+```
+
+
+Stations missing basic station info like lat/lng is alarming and needs to be investgated further? do these stations exist in WQM_Stations? Do they have benthic data in CEDS?
 
 
 ## Organize benthic information
