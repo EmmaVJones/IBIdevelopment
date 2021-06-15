@@ -77,14 +77,67 @@ stations <- read_excel('data/regionalRefStressStationList/BioSitesAll.xlsx', 'Un
   left_join(dplyr::select(stations1, StationID, Coastal), by ='StationID')%>% 
   dplyr::select(-UID) %>% 
   mutate(StationID = case_when(StationID == '5AXNOTC000.04' ~ '5AXNOTc000.04',
-                               TRUE ~ as.character(StationID))) # rename dumb format
+                               TRUE ~ as.character(StationID)))  # rename dumb format
+
 
 #clean up workspace
 rm(SCRO); rm(SWRO); rm(VRO); rm(WCRO); rm(NRO); rm(NROcoast); rm(PRO); rm(PROcoast); rm(TROcoast); rm(stations1)
 ```
 
+## Organize benthic information 
 
-## Organize station information
+For this, we will pull in pinned data from the server and transform it to a wide format to match project needs.
+
+```{r pinned benthic data}
+benSamps <- pin_get('ejones/benSamps', board = 'rsconnect') %>% 
+  filter(StationID %in% stations$StationID) %>% 
+  filter(`Target Count` == 200 & RepNum == 1) %>% # drop rarified samples and only rep 1's for now
+  filter(Gradient != 'Boatable') %>% # drop any boatable methods collected at desired sites
+  # first group by StationID and Date to drop duplicate Rep1 samples
+  group_by(StationID, `Collection Date`) %>% 
+  mutate(SampleN = 1:n()) %>% 
+  # look at samples with multiple rep1's
+  # dplyr::select(SampleN, everything()) %>%  
+  # arrange(desc(SampleN))
+  # write.csv(benSamps1, 'multiple rep 1s.csv', row.names = F)
+  filter(! SampleN > 1) %>%  # drop multiple rep 1s before filtering on max 4 samples per site
+  ungroup() %>% 
+  
+  # then drop multiple reps of the same season (not taken on the same day)
+  mutate(Year = year(`Collection Date`)) %>% 
+  group_by(StationID, Year, Season) %>% 
+  mutate(SampleN = 1:n()) %>% 
+  # look at samples with multiple rep1's in a season
+  # dplyr::select(SampleN, Year, Season, everything()) %>% 
+  # arrange(desc(SampleN)) %>% 
+  filter(! SampleN > 1) %>% 
+  
+  # then total all samples taken and drop any records > 4 for a station, starting the count at the most recent sample event
+  ungroup() %>% 
+  group_by(StationID) %>% 
+  arrange(desc(`Collection Date`)) %>% 
+  mutate(`Collection Date` = as.Date(`Collection Date`),
+         SampleN = 1:n(),# number samples from most recent collection
+         JulianDate = yday(`Collection Date`)) %>%  
+  filter(SampleN <= 4)  # only keep most recent four samples
+
+
+benthics <- pin_get('ejones/benthics', board = 'rsconnect') %>% 
+  filter(BenSampID %in% benSamps$BenSampID) %>% 
+  left_join(dplyr::select(benSamps, StationID, BenSampID, `Collection Date`, RepNum),
+            by = c('BenSampID', 'StationID', 'RepNum')) %>% 
+  group_by(StationID, BenSampID, RepNum) %>% 
+  arrange(FinalID) %>%
+  pivot_wider(id_cols = c('StationID','BenSampID','Collection Date', 'RepNum'), 
+              names_from = FinalID, values_from = Individuals)%>%
+  mutate(`Collection DateTime` = `Collection Date`,
+         `Collection Date` = as.Date(`Collection Date`)) %>% 
+  dplyr::select(StationID:`Collection Date`, `Collection DateTime`, everything()) %>% 
+  arrange(`Collection Date`) 
+
+```
+
+## Organize station information to join back to benthic info
 
 Based on Lucy's initial spreadsheet with some common station descriptors, we are going to use what data is already available on the R server (compiled weekly for use in many other projects) and only create data where necessary.
 
@@ -101,7 +154,8 @@ stationFullPin <- pin_get('ejones/WQM-Station-Full', board = 'rsconnect') %>%
 Join these data and identify where information is missing.
 
 ```{r initial station join}
-stationsSpatial <- left_join(stations, stationSpatialPin, by = 'StationID') %>% 
+stationsSpatial <- left_join(benSamps, stations, by = 'StationID') %>% 
+  left_join(stationSpatialPin, by = 'StationID') %>% 
   left_join(stationFullPin, by = c('StationID' = 'STATION_ID'))
 ```
 
@@ -126,17 +180,30 @@ This is best grabbed from most recent freshwater probmon wadeable dataset (IR202
 ```{r 2020 freshwater probmon wadeable dataset}
 prob <- read.csv('data/otherProjectData/Wadeable_ProbMon_2001-2018_Final_Final.csv') %>% 
   mutate(UID = paste(StationID, Year, sep = '_')) %>% 
-  dplyr::select(StationID, UID, Order, totalArea_sqMile, ELEVMIN:siteRain_inyr) %>% 
+  dplyr::select(StationID, UID, Year, Order, totalArea_sqMile, ELEVMIN:siteRain_inyr) %>% 
   filter(StationID %in% stationsSpatial$StationID) 
 
 BCG <- read.csv('data/otherProjectData/finalEnvData.csv') %>% 
-  dplyr::select(StationID, UID, Order, totalArea_sqMile, ELEVMIN:siteRain_inyr) %>% 
+  dplyr::select(StationID, UID, Year, Order, totalArea_sqMile, ELEVMIN:siteRain_inyr) %>% 
   filter(StationID %in% filter(stationsSpatial, ! StationID %in% prob$StationID)$StationID)
 
 #View(filter(stationsSpatial, ! StationID %in% prob$StationID))
 
-stationsSpatial2 <- left_join(stationsSpatial, bind_rows(prob, BCG), by = 'StationID') %>% 
-  dplyr::select(JRH_Final_Ref_Cod:StationID, UID, everything())
+stationsSpatial2 <- left_join(stationsSpatial, bind_rows(prob, BCG), by = c('StationID', 'Year')) %>% 
+  dplyr::select(DataSource, JRH_Final_Ref_Cod:Coastal, StationID, UID, Year, Season, JulianDate, `Collection Date`, Sta_Desc,
+                Latitude, Longitude, US_L3CODE:wshedRain_inyr, BenSampID, RepNum, Gradient, `Target Count`)
+
+# stationsSpatial2 <- left_join(stationsSpatial, bind_rows(prob, BCG), by = c('StationID', 'Year')) %>% 
+#   dplyr::select(JRH_Final_Ref_Cod:StationID, UID, Year,  everything())
+
+# Still all years in dataset that were sampled. These need to be dropped once we get benthic info joined
+# View(
+# stationsSpatial2 %>%
+#   group_by(StationID) %>%
+#   mutate(n = n()) %>%
+#   dplyr::select(n, everything()) %>%
+#   arrange(desc(n), StationID, desc(Year))
+# )
 ```
 
 We can try to get Order information from EDAS station information. This data is generated by the Biologists, so there is not consistency on what scale NHD the information comes from, but it is a start.
@@ -146,7 +213,11 @@ EDASorder <- read_excel('data/otherProjectData/EDAScombinedStations.xlsx') %>%
   dplyr::select(StationID, EDASOrder = Order)
 
 stationsSpatial2 <- left_join(stationsSpatial2, EDASorder, by = 'StationID') %>% 
-  dplyr::select(JRH_Final_Ref_Cod:Order, EDASOrder, everything())
+  dplyr::select(DataSource:Order, EDASOrder, everything()) %>% 
+  mutate( UID = paste(StationID, year(`Collection Date`), Season, sep= '_'))
+#dplyr::select(JRH_Final_Ref_Cod:Order, EDASOrder, everything())
+
+rm(EDASorder); rm(BCG); rm(prob); rm(stationSpatialPin); rm(stationFullPin)
 ```
 
 
@@ -158,74 +229,43 @@ map_df(stationsSpatial2, function(x) sum(is.na(x)))
 
 Missing lat/lng info from CEDS?
 ```{r}
-missing <- filter(stationsSpatial2, is.na(Latitude))
-```
-
-Missing watershed, Order, WQS info
-
-```{r}
-needWQS <- filter(stationsSpatial2, is.na(WQS_ID))
-needWatershed <- filter(stationsSpatial2, is.na(totalArea_sqMile))
-#saveRDS(needWQS, 'data/needSpatial/needWQS.RDS')
-#saveRDS(needWatershed, 'data/needSpatial/needWatershed.RDS')
+#missing <- filter(stationsSpatial2, is.na(Latitude))
 ```
 
 
-Stations missing basic station info like lat/lng is alarming and needs to be investgated further? do these stations exist in WQM_Stations? Do they have benthic data in CEDS?
-
-
-## Organize benthic information
-
-For this, we will pull in pinned data from the server and transform it to a wide format to match project needs.
-
-```{r pinned benthic data}
-benSamps <- pin_get('ejones/benSamps', board = 'rsconnect') %>% 
-  filter(StationID %in% stationsSpatial2$StationID) %>% 
-  filter(`Target Count` == 200 & RepNum == 1) %>% # drop rarified samples and only rep 1's for now
-  # first group by StationID and Date to drop duplicate Rep1 samples
-  group_by(StationID, `Collection Date`) %>% 
-  mutate(SampleN = 1:n()) %>% 
-  # look at samples with multiple rep1's
-  # dplyr::select(SampleN, everything()) %>%  
-  # arrange(desc(SampleN))
-  # write.csv(benSamps1, 'multiple rep 1s.csv', row.names = F)
-  filter(! SampleN > 1) %>%  # drop multiple rep 1s before filtering on max 4 samples per site
-  ungroup() %>% 
-  group_by(StationID) %>% 
-  arrange(desc(`Collection Date`)) %>% 
-  mutate(`Collection Date` = as.Date(`Collection Date`),
-         SampleN = 1:n(),# number samples from most recent collection
-         JulianDate = yday(`Collection Date`)) %>%  
-  filter(SampleN <= 4)  # only keep most recent four samples
-
-benthics <- pin_get('ejones/benthics', board = 'rsconnect') %>% 
-  filter(BenSampID %in% benSamps$BenSampID) %>% 
-  left_join(dplyr::select(benSamps, StationID, BenSampID, `Collection Date`, RepNum),
-            by = c('BenSampID', 'StationID', 'RepNum')) %>% 
-  group_by(StationID, BenSampID, RepNum) %>% 
-  arrange(FinalID) %>%
-  pivot_wider(id_cols = c('StationID','BenSampID','Collection Date', 'RepNum'), 
-              names_from = FinalID, values_from = Individuals)%>%
-  mutate(`Collection DateTime` = `Collection Date`,
-         `Collection Date` = as.Date(`Collection Date`)) %>% 
-  dplyr::select(StationID:`Collection Date`, `Collection DateTime`, everything()) %>% 
-  arrange(`Collection Date`) 
-
-```
 
 
 We need to send the nmds all categorical and continuous info in a single dataset, so join the date, gradient, etc. from benSamps to the station info for analysis.
 
 ```{r}
-stationsSpatial_withAllData <- left_join(
-  dplyr::select(benSamps, StationID, `Collection Date`, Gradient, Season, JulianDate),
-  stationsSpatial2, by = 'StationID') %>% 
-  mutate(UID = paste(StationID, year(`Collection Date`), Season, sep= '_')) %>% 
-  dplyr::select(DataSource, JRH_Final_Ref_Cod, StationID, UID, everything()) %>% 
-  arrange(StationID, `Collection Date`)
+stationsSpatial_withAllData <- stationsSpatial2 %>% arrange(StationID, `Collection Date`)
+# stationsSpatial_withAllData <- left_join(
+#   dplyr::select(benSamps, StationID, `Collection Date`, Year, Gradient, Season, JulianDate),
+#   stationsSpatial2, by = c('StationID', 'Year')) %>% 
+#   mutate(UID = paste(StationID, year(`Collection Date`), Season, sep= '_')) %>% 
+#   dplyr::select(DataSource, JRH_Final_Ref_Cod, StationID, UID, everything()) %>% 
+#   arrange(StationID, `Collection Date`)
 
+# make sure no one has > 4 samples
+# View(stationsSpatial_withAllData %>%
+#   mutate(SampleN = 1:n()) %>%
+#   dplyr::select(SampleN, everything()) %>%
+#   arrange(desc(SampleN))
+# )
 ```
 
+
+
+Missing watershed, Order, WQS info
+
+```{r}
+needWQS <- filter(stationsSpatial_withAllData, is.na(WQS_ID)) %>% 
+  distinct(StationID, .keep_all = T)
+needWatershed <- filter(stationsSpatial2, is.na(totalArea_sqMile)) %>% 
+   distinct(StationID, .keep_all = T)
+#saveRDS(needWQS, 'data/needSpatial/needWQS.RDS')
+#saveRDS(needWatershed, 'data/needSpatial/needWatershed.RDS')
+```
 
 
 

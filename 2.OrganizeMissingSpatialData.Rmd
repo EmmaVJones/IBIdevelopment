@@ -17,7 +17,10 @@ library(inlmisc)
 library(lubridate)
 
 # Bring in missing data categories
-needWQS <- readRDS( 'data/needSpatial/needWQS.RDS')
+needWQS <- readRDS( 'data/needSpatial/needWQS.RDS') %>% 
+      st_as_sf(coords = c("Longitude", "Latitude"),  # make spatial layer using these columns
+               remove = F, # remove these lat/lon cols from df
+               crs = '+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=37.5 +lon_0=-96 +x_0=0 +y_0=0 +ellps=GRS80 +datum=NAD83 +units=m no_defs') 
 needWatershed <- readRDS('data/needSpatial/needWatershed.RDS')
 ```
 
@@ -53,27 +56,27 @@ points <- basinData$point %>%
   reduce(rbind) %>%
   arrange(UID)
 
-saveRDS(watersheds, 'watersheds.RDS')
-saveRDS(points, 'points.RDS')
+saveRDS(watersheds, 'watersheds50.RDS')
+saveRDS(points, 'points50.RDS')
 ```
 
 Run back out to streamstats and get anyone that is missing
     
 ```{r fix missing sites (rerun as necessary)}
 # fix anything that is missing
-if(nrow(points) != nrow(watersheds) | nrow(needWatershed) != nrow(watersheds)){
+if(nrow(points) != nrow(watersheds) | nrow(needWatershedFilter) != nrow(watersheds)){
   missing <- unique(
     c(as.character(points$UID[!(points$UID %in% watersheds$UID)]),
-      as.character(needWatershed$StationID[!(needWatershed$StationID %in% watersheds$UID)])))
-  missingDat <- filter(needWatershed, StationID %in% missing)
+      as.character(needWatershedFilter$StationID[!(needWatershedFilter$StationID %in% watersheds$UID)])))
+  missingDat <- filter(needWatershedFilter, StationID %in% missing)
   
   #remove missing site from the paired dataset
   points <- filter(points, ! UID %in% missing)
   watersheds <- filter(watersheds, ! UID %in% missing)
   
   dat <- streamStats_Delineation(state= 'VA', 
-                                 longitude = missingDat$Long, 
-                                 latitude = missingDat$Lat, 
+                                 longitude = missingDat$Longitude, 
+                                 latitude = missingDat$Latitude, 
                                  UID = missingDat$StationID)
   
   watersheds_missing <- dat$polygon %>%
@@ -90,6 +93,10 @@ if(nrow(points) != nrow(watersheds) | nrow(needWatershed) != nrow(watersheds)){
   
   rm(missingDat); rm(dat); rm(watersheds_missing); rm(points_missing)
 }
+
+saveRDS(watersheds, 'watersheds50.RDS')
+saveRDS(points, 'points50.RDS')
+
 
 ```
 
@@ -205,10 +212,49 @@ mapMe(watersheds, points, dplyr::select(needWatershed, -UID), vafrm)
 Save QAed watersheds and sites as shapefiles.
     
 ```{r save shapefiles}
-st_write(watersheds, paste0('GIS/delineations/', basinName,'_StreamStats_watersheds.shp'))
-st_write(points, paste0('GIS/delineations/', basinName,'_StreamStats_points.shp'))
+st_write(watersheds, 'data/GIS/delineations/StreamStats_watersheds.shp')
+st_write(points, paste0('data/GIS/delineations/StreamStats_points.shp'))
 
 #basinName <- 'Potomac River Basin'
 #watersheds <- st_read(paste0('GIS/delineations/', basinName,'_StreamStats_watersheds.shp'))
 #points <- st_read(paste0('GIS/delineations/', basinName,'_StreamStats_points.shp'))
 ```
+
+
+
+
+
+
+## Snap stations to WQS
+
+These stations are missing WQS information and need to be spatially joined to the most recent WQS layer (at the time of scripting) in order to access this information. All the stations are biological stations, so we only need to use the riverine methods.
+
+All stations get manually reviewed after snapping.
+
+```{r snap WQS}
+
+source('snappingFunctions/snapWQS.R')
+
+needWQS <- readRDS( 'data/needSpatial/needWQS.RDS') %>% 
+      st_as_sf(coords = c("Longitude", "Latitude"),  # make spatial layer using these columns
+               remove = F, # remove these lat/lon cols from df
+               crs = 4326)
+             
+
+WQStable <- tibble(StationID = NA, WQS_ID = NA)
+
+riverine <- st_read('C:/HardDriveBackup/GIS/WQS/WQS_layers_05082020.gdb', layer = 'riverine_05082020' , fid_column_name = "OBJECTID") #%>%
+  #st_transform(102003) # forcing to albers from start bc such a huge layer
+  #st_transform('+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=37.5 +lon_0=-96 +x_0=0 +y_0=0 +ellps=GRS80 +datum=NAD83 +units=m no_defs')
+# 2/3/21 have to manually feed character proj4string bc doesn't recognize albers epsg 
+
+
+WQStable <- snapAndOrganizeWQS(needWQS, 'StationID', riverine, 
+                               bufferDistances = seq(20,80,by=20),  # buffering by 20m from 20 - 80 meters
+                               WQStable)
+
+
+rm(riverine)
+saveRDS(WQStable, 'data/WQStable.RDS')
+```
+
