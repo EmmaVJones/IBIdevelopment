@@ -1,0 +1,377 @@
+---
+title: "NMDS Reference Bugs- An example dataset"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+always_allow_html: yes
+fig_width: 6 
+fig_height: 4 
+---
+
+R version 4.0.3 (2020-10-10) -- "Bunny-Wunnies Freak Out"
+
+Packages used for NMDS: vegan (version 2.5-7)
+
+```{r setup, include=FALSE}
+
+
+#R version 4.0.3 (2020-10-10) -- "Bunny-Wunnies Freak Out"
+#Copyright (C) 2020 The R Foundation for Statistical Computing
+#Platform: x86_64-w64-mingw32/x64 (64-bit)
+#knitr::opts_chunk$set(echo = TRUE)
+
+library(vegan)
+library(dplyr)
+library(lubridate)
+library(purrr)
+library(ggplot2)
+library(readxl)
+
+# Set working directory
+
+#setwd('C:/Users/ktq89598/Desktop/FishBugIBI/NMDS')
+
+```
+## Methods
+
+
+<font size="4"> The document serves as an example of analyses that will be conducted to identify natural variations in benthic communities across Virginia. These NMDS will support the Genus level IBI development process. An analysis is the first run of all of reference sites in Virginia. No West Virginia DEP data is used in this analysis. Several reference sites have been sent back to Virginia DEQ biologists for one more review. 
+
+
+The dataset used is a subset of reference stations collected in Virginia. If stations appeared in the dataset more than 4 times, then the most recent 4 samples were used and the rest removed. Taxa that occurred in the dataset < 5% of the time were removed. The data was log10 +1 transformed. Environmental factors were compiled for each station and used to plot over the NMDS to show environmental variation associated with the community matrix. The envfit function in Vegan was used to plot the continuous environmental variables. </font>
+
+
+
+```{r files, echo=FALSE}
+
+###Load Data
+bugs <- read.csv('data/dataOut/benthics.csv')
+env <- read.csv('data/dataOut/stationsSpatial_withAllData.csv')
+Bugenv<-left_join(bugs,env, by="BenSampID")
+# bugs <- read_excel('JRH_Data/BugsJune11.xlsx', sheet='RefBugV1')
+# 
+# env <- read_excel('JRH_Data/BugsJune11.xlsx', sheet='EnvV1')
+
+#bugs<-read.csv("benthics_11June2021Final.csv")
+
+
+#env<-read.csv("StationInfo_Final.csv")
+#Bioregion<-read.csv("Bio_info.csv")
+#stationinfo<-read.csv("Lucy_Example_StationInfo.csv")
+
+
+#Bugenv<-left_join(bugs,env, by="UID")
+
+##Figure out how to join
+#Bugenv<-left_join(env, bugs, by="StationID")%>%
+#  select("StationID", "Latitude", "Longitude","Collection.Date", "JRH_Final_Ref_Cod", "Coastal", "US_L3CODE", "US_L3NAME", "US_L4NAME", "ASSESS_REG", "Tidal", "VAHUSB", "Basin", "Basin_Code", "CountyCityName", "WQS_CLASS", "WQS_SPSTDS", "WQS_PWS", "WQS_TROUT", "WQS_TIER_III", "Order","EDASOrder", "totalArea_sqMile", "ELEVMEAN", "SLPMEAN", "wshdRain_mmyr", "siteRain_mmyr" )%>%
+#  unique()
+
+# Bioregion2<-merge(x=Bioregion, y=stationinfo, by="StationID")%>%
+#   select("StationID", "BioRegion", "Gradient")
+# bugenv2<-merge(x=Bugenv, y=Bioregion2, by = "StationID")%>%
+#   select("StationID", "Latitude", "Longitude", "WQM_STA_STRAHER_ORDER", "EPA_ECO_US_L3CODE","EPA_ECO_US_L3NAME",     "BASINS_HUC_8_NAME","BASINS_VAHU6","WQS_SEC", "WQS_CLASS", "WQS_SPSTDS", "WQS_TROUT",
+# "WQS_TIER_III", "Admin_Region", "Sta_Huc_Code", "Sta_Huc_Sbc_Bsc_Code", "Sta_Huc_Sbc_Code", "Sta_Wqm_Wat_Shed_Code", "Collection.Date", "Season", "BioRegion", "Gradient")%>%
+#   unique()
+
+###Wait for lucy or emma here....###
+#Bugenv$Collection.Date<-as.Date(as.character(Bugenv$Collection.Date), format="%m/%d/%Y")
+#Bugenv$JulianDate<- yday(Bugenv$Collection.Date)
+#Bugenv[sapply(Bugenv, is.character)] <- lapply(Bugenv[sapply(Bugenv, is.character)],as.factor) 
+
+
+```
+
+
+```{r pressure, echo=FALSE, message = FALSE}
+
+#Removed in excel
+
+######think lucy was log10 bugs here?####
+
+
+bugs[is.na(bugs)]<-0
+bugsnms<-bugs%>%
+select("StationID", 6:115) # not best practices to call column numbers
+
+buglog<-log1p(bugsnms[,2:111])# not best practices to call column numbers
+
+###buglog$site<-1:nrow(buglog) 
+###bugsnms$site<-1:nrow(bugsnms)
+
+
+#######It this where lucy is putting species fit into graph??
+#Site<-bugsnms%>%
+#  select("StationID","site")
+#BugNMS<- left_join(buglog,Site)%>%
+#  select(-c("site"))
+
+
+```
+
+
+
+<font size="4"> The first step was to read in the reference site bug taxa list and environmental factors dataset for each station. Join the environmental dataset with the bug dataset to account for multiple observations of each station and collection date and time. 
+
+Check to make sure the bug and environmental join was successful: 
+
+Number of rows in Community Matrix: `r format(nrow(bugs))`
+
+Number or rows in Environmental Matrix: `r format(nrow(env))`
+
+The data was log10+1 transformed. Rare taxa were removed in excel. </font>
+
+
+
+
+
+
+
+
+
+## Run NMDS for reference communities
+
+
+```{r bugnms, echo=FALSE}
+NMDSbug <-metaMDS (bugs[,8:131],k=3) 
+#NMDSbug <-metaMDS (bugs[,8:131],k=3) 
+#Best run is 0.18
+NMDSbug
+
+#Stressplot fo NMDS
+stressplot(NMDSbug)
+gof <- goodness(NMDSbug)
+gof
+plot(NMDSbug, "sites")
+#orditorp(NMDSbug,display="sites",cex=1.25,air=0.01)
+
+
+###Think Lucy was fitting genus to NMDS??
+#bug.spp.fit <- envfit(NMDSbug, BugNMS, permutations = 999) 
+#bug.spp.scrs <- as.data.frame(scores(bug.spp.fit, display = "vectors")) 
+
+
+```
+
+
+
+# Plot with Species
+
+
+```{r plot with species, echo=FALSE, fig.width=12, fig.height=8}
+
+
+#plot (all) with species
+plot(NMDSbug, type = "n")
+points(NMDSbug, display = "sites", cex = 0.8, pch=21, col="red", bg="yellow")
+text(NMDSbug, display = "spec", cex=0.7, col="blue")
+
+
+#samplescores<-as.data.frame(scores(NMDSbug))
+#samplescores$site<-Site$StationID
+
+#species.scores <- as.data.frame(scores(NMDSbug, "species"))  #Using the scores function from vegan to extract the species scores and convert to a data.frame
+#species.scores$species <- rownames(species.scores)
+
+#ggplot()+
+#  geom_text(data=samplescores,aes(x=NMDS1,y=NMDS2,label=site),alpha=0.5, size=3,vjust=1.5,hjust=0.6) +  # add the species labels
+#  geom_point(data=samplescores,aes(x=NMDS1,y=NMDS2),size=3)+
+#  theme_bw() + 
+#  theme(axis.text.x = element_blank(),  # remove x-axis text
+#        axis.text.y = element_blank(), # remove y-axis text
+#        axis.ticks = element_blank(),  # remove axis ticks
+#        axis.title.x = element_text(size=18), # remove x-axis labels
+#        axis.title.y = element_text(size=18), # remove y-axis labels
+#        panel.background = element_blank(), 
+#        panel.grid.major = element_blank(),  #remove major-grid labels
+#        panel.grid.minor = element_blank(),  #remove minor-grid labels
+#        plot.background = element_blank())
+
+
+
+
+```
+
+## Season
+
+```{r Season and bug overlay, echo=FALSE, fig.width=12, fig.height=8}
+#Season and bug NMDS
+plot(NMDSbug, type = "n") #displays empty ordination space
+points(NMDSbug, display = "sites", cex=2, pch = c(16, 8) [as.factor(as.numeric(Bugenv$Season))]) 
+legend("topright", legend = c(levels(env$Season)),pch = c(16, 8, 16, 16))
+legend("topleft", "stress = 0.181", bty = "n", cex = 2) # displays legend text of stress value 
+#plot(bug.spp.fit, p.max = 0.001, col = "black", cex = 1) 
+
+#head(bug.spp.fit$vectors)
+
+
+#plot (all) with species by Season
+#with(env, levels(Season))
+#scl <- 2 ## scaling = 2
+#colvec <- c("red2", "mediumblue")
+#plot(NMDSbug, type = "n", scaling = scl)
+#with(env, points(NMDSbug, display = "sites", col = colvec[Season],
+#                  scaling = scl, pch = 21, bg = colvec[Season]))
+#with(env, legend("topright", legend = levels(Season), bty = "n",
+#                  col = colvec, pch = 21, pt.bg = colvec))
+
+
+```
+
+
+## Ecoregion
+
+```{r plot Ecoregion, echo=FALSE, fig.width=12, fig.height=8}
+
+#Ecoregion
+
+plot(NMDSbug, type = "n") #displays empty ordination space
+points(NMDSbug, display = "sites", cex=2, pch=16, col= c("black","red", "green") [as.factor(as.numeric(Bugenv$US_L3NAME))]) 
+legend("topright", legend = c(levels(Bugenv$US_L3NAME)),pch=16, col = c("black","red", "green"), bty = "n", cex = 2)
+legend("topleft", "stress = 0.182", bty = "n", cex = 2) # displays legend text of stress value 
+
+
+#Ecoregion.mrpp<- with(bugenv2, mrpp(BugNMS[,1:87], group= EPA_ECO_US_L3NAME, distance="bray"))
+
+#Ecoregion.mrpp
+
+```
+
+## Basin 
+
+```{r plot Basin, echo=FALSE, fig.width=12, fig.height=8}
+
+# Basin
+
+plot(NMDSbug, type = "n") #displays empty ordination space
+points(NMDSbug, display = "sites", cex=2, pch=16, col= c(unique(Bugenv$Basin_Code)) [as.factor(as.numeric(Bugenv$Basin_Code))]) 
+legend("topright", legend = c(levels(Bugenv$Basin_Code)),pch=16, col = c(unique(Bugenv$Basin_Code)), bty = "n", cex = 2)
+legend("topleft", "stress = 0.142", bty = "n", cex = 2) # displays legend text of stress value 
+
+Basin.mrpp<- with(Bugenv, mrpp(BugNMS[,1:87], group=BASINS_HUC_8_NAME, distance="bray" ))
+
+Basin.mrpp
+
+```
+
+
+## Admin Region
+
+```{r plot Region, echo=FALSE, fig.width=12, fig.height=8}
+
+#Admin-region
+plot(NMDSbug, type = "n") #displays empty ordination space
+points(NMDSbug, display = "sites",cex=2, pch=16, col= c(unique(Bugenv$ASSESS_REG)) [as.factor(as.numeric(Bugenv$ASSESS_REG))]) 
+legend("topright", legend = c(levels(Bugenv$ASSESS_REG)),pch=16, col = c(unique(Bugenv$ASSESS_REG)), bty = "n", cex = 2)
+legend("topleft", "stress = 0.142", bty = "n", cex = 2) # displays legend text of stress value 
+
+admin.mrpp<- with(bugenv2, mrpp(BugNMS[,1:87], group=Admin_Region, distance="bray" ))
+
+admin.mrpp
+
+```
+
+## Sample Method--- Don't have this parameter
+```{r plot Sample Method, echo=FALSE, fig.width=12, fig.height=8}
+
+#Method
+plot(NMDSbug, type = "n") #displays empty ordination space
+points(NMDSbug, display = "sites", cex=2, pch=16, col= c(unique(bugenv2$Gradient)) [as.factor(as.numeric(bugenv2$Gradient))]) 
+legend("topright", legend = c(levels(bugenv2$Gradient)),pch=1, col = c(unique(bugenv2$Gradient)), bty = "n", cex = 2)
+legend("topleft", "stress = 0.142", bty = "n", cex = 2) # displays legend text of stress value 
+
+Sample.mrpp<- with(bugenv2, mrpp(BugNMS[,1:87], group=Gradient, distance="bray" ))
+
+Sample.mrpp
+
+```
+
+
+## BioRegion -- Don't have this paarmeter I don't think....
+```{r plot Bioregion, echo=FALSE, fig.width=12, fig.height=8}
+
+#Bioregion
+plot(NMDSbug, type = "n") #displays empty ordination space
+points(NMDSbug, display = "sites",cex=2, pch=16,  col= c(unique(bugenv2$BioRegion)) [as.factor(as.numeric(bugenv2$BioRegion))]) 
+legend("topright", legend = c(levels(bugenv2$BioRegion)),pch=16, col = c(unique(bugenv2$BioRegion)), bty = "n", cex = 2)
+legend("topleft", "stress = 0.142", bty = "n", cex = 2) # displays legend text of stress value 
+
+Bioregion.mrpp<- with(bugenv2, mrpp(BugNMS[,1:87], group=BioRegion, distance="bray" ))
+
+Bioregion.mrpp
+
+```
+
+
+## BioRegion and Season 
+```{r plot Bioregion and season, echo=FALSE, fig.width=12, fig.height=8}
+
+#Bioregion and Season
+plot(NMDSbug, type = "n") #displays empty ordination space
+points(NMDSbug, display = "sites",cex=2, pch = c(16, 8) [as.numeric(bugenv2$BioRegion)], col = c("orange", "black") [as.numeric(bugenv2$Season)]) # displays site points where symbols (pch) are different management options and colour (col) are different land uses
+legend("bottomleft", legend = c("Mountain, Fall", "Mountain, Spring", "Piedmont, Fall", "Piedmont, Spring"), pch = c(16, 16, 8, 8), col = c("orange","black", "orange", "black"), bty = "n", cex = 2)   
+legend("topleft", "stress = 0.142", bty = "n", cex = 2) # displays legend text of stress value 
+
+
+```
+
+## Stream Order
+
+```{r plot Stream order, echo=FALSE, fig.width=12, fig.height=8}
+
+#Stream order
+plot(NMDSbug, type = "n") #displays empty ordination space
+points(NMDSbug, display = "sites", cex=2, pch=16, col= c(unique(Bugenv$EDASOrder)) [as.factor(as.numeric(Bugenv$EDASOrder))]) 
+legend("topright", legend = c(levels(as.factor(as.numeric(Bugenv$EDASOrder)))),pch=16, col = c(unique(as.factor(as.numeric(Bugenv$EDASOrder)))), bty = "n", cex = 2)
+legend("topleft", "stress = 0.142", bty = "n", cex = 2) # displays legend text of stress value 
+
+Stream.mrpp<- with(Bugenv, mrpp(BugNMS[,1:87], group=WQM_STA_STRAHER_ORDER, distance="bray" ))
+
+Stream.mrpp
+
+```
+
+## Water Quality Standard Class
+
+```{r plot Water quality Standard, echo=FALSE, fig.width=12, fig.height=8}
+
+#Water Quality Standard Class
+plot(NMDSbug, type = "n") #displays empty ordination space
+points(NMDSbug, display = "sites", cex=2, pch=16, col= c(unique(Bugenv$WQS_CLASS)) [as.factor(as.numeric(Bugenv$WQS_CLASS))]) 
+legend("topright", legend = c(levels(Bugenv$WQS_CLASS)),pch=16, col = c(unique(as.factor(as.numeric(Bugenv$WQS_CLASS)))), bty = "n", cex = 2)
+legend("topleft", "stress = 0.142", bty = "n", cex = 2) # displays legend text of stress value 
+
+
+Standard.mrpp<- with(Bugenv, mrpp(BugNMS[,1:87], group=WQS_CLASS, distance="bray" ))
+
+Standard.mrpp
+
+```
+
+## Natural Trout Water WQS?
+
+```{r Natural trout water, echo=FALSE, fig.width=12, fig.height=8}
+
+#Water Quality Standard Class
+plot(NMDSbug, type = "n") #displays empty ordination space
+points(NMDSbug, display = "sites", cex=2, pch=16, col= c(unique(Bugenv$WQS_TROUT)) [as.factor(as.numeric(Bugenv$WQS_TROUT))]) 
+legend("topright", legend = c(levels(Bugenv$WQS_TROUT)),pch=16, col = c(unique(as.factor(as.numeric(Bugenv$WQS_TROUT)))), bty = "n", cex = 2)
+legend("topleft", "stress = 0.142", bty = "n", cex = 2) # displays legend text of stress value 
+
+Trout.mrpp<- with(Bugenv, mrpp(BugNMS[,1:87], group=WQS_TROUT, distance="bray" ))
+
+Trout.mrpp
+
+```
+
+# Continuous Environmental Variables
+
+
+```{r plot continuous environment variables, echo=FALSE, fig.width=12, fig.height=8}
+
+ord.fit<-envfit(NMDSbug~ JulianDate + Latitude + Longitude , data=Bugenv, permi=100)
+plot(NMDSbug, dis="site", cex=2)
+plot(ord.fit)
+
+head(ord.fit)
+
+```

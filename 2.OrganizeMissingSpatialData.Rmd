@@ -17,10 +17,7 @@ library(inlmisc)
 library(lubridate)
 
 # Bring in missing data categories
-needWQS <- readRDS( 'data/needSpatial/needWQS.RDS') %>% 
-      st_as_sf(coords = c("Longitude", "Latitude"),  # make spatial layer using these columns
-               remove = F, # remove these lat/lon cols from df
-               crs = '+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=37.5 +lon_0=-96 +x_0=0 +y_0=0 +ellps=GRS80 +datum=NAD83 +units=m no_defs') 
+needWQS <- readRDS( 'data/needSpatial/needWQS.RDS') 
 needWatershed <- readRDS('data/needSpatial/needWatershed.RDS')
 ```
 
@@ -33,11 +30,15 @@ source('methods/StreamStatsAutoDelineation.R')
 ```
 Begin delineating sites.
 
-Break into chunks to ease processing. Using 50 site blocks
+Break into chunks to ease processing. Using 50 site blocks. Repeat as many times as necessary.
 
 ```{r streamstats delineation}
+#bring in already delineated sites
+doneWatersheds <- readRDS('watersheds.RDS')
+donePoints <- readRDS('points.RDS')
 
-needWatershedFilter <- needWatershed[1:50,]
+needWatershedFilter <- filter(needWatershed, !StationID %in% doneWatersheds$UID)[1:50,]
+#needWatershed[1:50,]
 
 basinData <- streamStats_Delineation(state= 'VA',
                                      longitude = needWatershedFilter$Longitude, 
@@ -56,8 +57,8 @@ points <- basinData$point %>%
   reduce(rbind) %>%
   arrange(UID)
 
-saveRDS(watersheds, 'watersheds50.RDS')
-saveRDS(points, 'points50.RDS')
+#saveRDS(watersheds, 'watersheds50.RDS')
+#saveRDS(points, 'points50.RDS')
 ```
 
 Run back out to streamstats and get anyone that is missing
@@ -94,8 +95,11 @@ if(nrow(points) != nrow(watersheds) | nrow(needWatershedFilter) != nrow(watershe
   rm(missingDat); rm(dat); rm(watersheds_missing); rm(points_missing)
 }
 
-saveRDS(watersheds, 'watersheds50.RDS')
-saveRDS(points, 'points50.RDS')
+watersheds1 <- rbind(watersheds, doneWatersheds)
+points1 <- rbind(points, donePoints)
+
+saveRDS(watersheds1, 'watersheds.RDS')
+saveRDS(points1, 'points.RDS')
 
 
 ```
