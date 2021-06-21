@@ -262,3 +262,38 @@ rm(riverine)
 saveRDS(WQStable, 'data/WQStable.RDS')
 ```
 
+
+
+## Snap stations to strahler
+
+These stations are missing strahler order information and need to be spatially joined to the 1:100k va probmon sample frame in order to access this information. All the stations are biological stations, so we only need to use the riverine methods.
+
+All stations get manually reviewed after snapping.
+
+```{r snap WQS}
+
+source('snappingFunctions/snapAnything.R')
+
+needOrder <- readRDS( 'data/needSpatial/needWatershed.RDS') %>% ungroup() %>% 
+      st_as_sf(coords = c("Longitude", "Latitude"),  # make spatial layer using these columns
+               remove = F, # remove these lat/lon cols from df
+               crs = 4326)
+             
+
+orderTable <- tibble(StationID = NA, STRAHLER = NA) # make sure the name of the second variable matches the name of the field you want to extract from the line network
+
+vafrm <- st_read('data/GIS/vafrm_99_05Albers.shp') #%>%
+  #st_transform(102003) # forcing to albers from start bc such a huge layer
+  #st_transform('+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=37.5 +lon_0=-96 +x_0=0 +y_0=0 +ellps=GRS80 +datum=NAD83 +units=m no_defs')
+# 2/3/21 have to manually feed character proj4string bc doesn't recognize albers epsg 
+
+
+orderTable <- snapAndOrganizeAnything(needOrder, 'StationID', vafrm, 'STRAHLER',
+                                      bufferDistances = seq(20,80,by=20),  # buffering by 20m from 20 - 80 meters
+                                      orderTable)
+
+
+rm(vafrm)
+saveRDS(orderTable, 'data/orderTable.RDS')
+```
+
