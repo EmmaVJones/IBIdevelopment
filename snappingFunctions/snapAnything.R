@@ -83,7 +83,7 @@ snapAndOrganizeAnything <- function(sites, # sf MULTIPOINT file
                                MULTILINESTRING_colname, # name of field to be taken from network
                                bufferDistances, # numeric sequence of distances to run buffer, these will be in
                                # the unit of the MULTIPOINT and MULTILINESTRING files
-                               WQStable ){
+                               outTable){
   
 
   # transform to Albers for spatial intersection, do this inside function to not change layer used in other analyses

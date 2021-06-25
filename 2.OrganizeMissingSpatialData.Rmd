@@ -260,6 +260,43 @@ WQStable <- snapAndOrganizeWQS(needWQS, 'StationID', riverine,
 
 rm(riverine)
 saveRDS(WQStable, 'data/WQStable.RDS')
+WQStable <- readRDS('data/WQStable.RDS')
+# grab spatial info for sites and save as shapefile for manual WQS review in ArcGIS
+library(pins)
+# get ODS and server configuration settings
+conn <- config::get("connectionSettings")
+
+# connect to server
+board_register_rsconnect(key = conn$CONNECT_API_KEY,  #Sys.getenv("CONNECT_API_KEY"),
+                         server = conn$CONNECT_SERVER)#Sys.getenv("CONNECT_SERVER"))
+
+WQM_Stations_Spatial <- pin_get('ejones/WQM-Stations-Spatial', board = 'rsconnect')
+
+WQStable <- WQStable %>% 
+  mutate(Comments = 'IBI project review') %>% 
+  group_by(StationID) %>% 
+  mutate(n = n()) 
+
+WQStableForReview <- WQStable %>% 
+  filter(n>1) %>% 
+  left_join( WQM_Stations_Spatial, by = 'StationID') %>% 
+  filter(!is.na(StationID)) %>% 
+  st_as_sf(coords = c("Longitude", "Latitude"),  # make spatial layer using these columns
+               remove = F, # remove these lat/lon cols from df
+               crs = 4326)
+#st_write(WQStableForReview, 'data/needSpatial/WQStableForReview.shp')
+
+# after going through individually, bring results back in
+WQStableReviewed <- st_read('data/needSpatial/WQStableForReview.shp') %>% 
+  dplyr::select('StationID' =  "StatnID", "WQS_ID" , `Buffer Distance` = "BffrDst", `Comments` = "Commnts" )
+
+# smash back together
+WQStableFinal <- filter(WQStable,! StationID %in% WQStableForReview$StationID) %>% 
+  bind_rows(WQStableReviewed %>% st_drop_geometry()) %>% 
+  filter(!is.na(StationID)) %>% 
+  dplyr::select(-n)
+
+saveRDS(WQStableFinal, "data/needSpatial/finalWQS.RDS")  
 ```
 
 
@@ -270,7 +307,7 @@ These stations are missing strahler order information and need to be spatially j
 
 All stations get manually reviewed after snapping.
 
-```{r snap WQS}
+```{r snap order}
 
 source('snappingFunctions/snapAnything.R')
 
@@ -295,5 +332,45 @@ orderTable <- snapAndOrganizeAnything(needOrder, 'StationID', vafrm, 'STRAHLER',
 
 rm(vafrm)
 saveRDS(orderTable, 'data/orderTable.RDS')
+```
+
+Now organize and make decisions
+
+```{r go through order}
+
+needWork <- filter(orderTable, is.na(STRAHLER)) # 20 need real fixes
+
+ 
+orderTableCounts <-  orderTable %>% 
+  filter(! is.na(STRAHLER)) %>% 
+  group_by(StationID) %>% 
+  mutate(n = n())
+orderTableMoreThan1 <-  filter(orderTableCounts, n>1)
+
+orderTableDistinct <- orderTableMoreThan1 %>% 
+  distinct(STRAHLER, .keep_all = T) %>% 
+  mutate(n = n())
+
+final <- bind_rows(filter(orderTableCounts, n == 1),
+                   filter(orderTableDistinct, n == 1))
+
+orderTableRealMoreThan1 <- filter(orderTableDistinct, n > 1)
+
+manualReview <- bind_rows(orderTableRealMoreThan1, needWork) %>% ungroup() %>% 
+  left_join(needOrder %>%  dplyr::select(StationID:ASSESS_REG) %>% st_drop_geometry(), by = 'StationID') %>% 
+  st_as_sf(coords = c("Longitude", "Latitude"),  # make spatial layer using these columns
+               remove = F, # remove these lat/lon cols from df
+               crs = 4326)
+     
+
+#st_write(manualReview, 'data/OrderReview.shp')
+# now go through and manually fix in arcmap quickly
+manualReview <- st_read('data/OrderReview.shp') %>% 
+  st_drop_geometry() %>% 
+  dplyr::select(StationID  = StatnID, STRAHLER = STRAHLE, `Buffer Distance` = BffrDst)
+
+final <- bind_rows(final, manualReview)
+
+saveRDS(final, 'data/needSpatial/finalOrder.RDS')
 ```
 
