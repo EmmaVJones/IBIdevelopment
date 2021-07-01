@@ -43,21 +43,10 @@ These spreadsheets are organized by DEQ region (one spreadsheet per regional off
 As more regional station lists become available, this chunk will fill out with all stations statewide.
 
 ```{r regional ref stress station lists}
-SCRO <- read_excel('data/regionalRefStressStationList/RefStressDataFinal_SCRO.xlsx', sheet = 'JRH_Final_SCRO') %>%
-  mutate(Coastal = FALSE)
-SWRO <- read_excel('data/regionalRefStressStationList/RefStressDataFinal_SWRO.xlsx', sheet = 'JRH_Final_SWRO') %>%
-  mutate(Coastal = FALSE)
-VRO <- read_excel('data/regionalRefStressStationList/RefStressDataFinal_VRO.xlsx', sheet = 'JRH_Final_VRO') %>%
-  mutate(Coastal = FALSE)
-WCRO <- read_excel('data/regionalRefStressStationList/RefStressDataFinal_WCRO.xlsx', sheet = 'JRH_Final_WCRO') %>%
-  mutate(Coastal = FALSE)
-NRO <- read_excel('data/regionalRefStressStationList/RefStressDataFinal_NRO.xlsx', sheet = 'JRH_Final_NRO') %>%
-  mutate(Coastal = FALSE)
+# get old coastal designation
 NROcoast <- read_excel('data/regionalRefStressStationList/RefStressDataFinal_NRO_Coast.xlsx',
                        sheet = 'JRH_Final_NRO_Coast') %>%
   mutate(Coastal = TRUE)
-PRO <- read_excel('data/regionalRefStressStationList/RefStressDataFinal_PRO.xlsx', sheet = 'JRH_Final_PRO') %>%
-  mutate(Coastal = FALSE)
 PROcoast <- read_excel('data/regionalRefStressStationList/RefStressDataFinal_PRO_Coast.xlsx',
                        sheet = 'JRH_Final_Comment_Coast') %>%
   mutate(Coastal = TRUE)
@@ -66,22 +55,76 @@ TROcoast <- read_excel('data/regionalRefStressStationList/RefStressDataFinal_TRO
   mutate(Coastal = TRUE)
 
 # combine and just keep coastal vs not coastal designation
-stations1 <- bind_rows(SCRO, SWRO, VRO, WCRO, NRO, NROcoast, PRO, PROcoast, TROcoast) %>%
+stationsCoast <- bind_rows(NROcoast, PROcoast, TROcoast) %>%
   mutate(StationID = toupper(UID)) %>% # reserve UID for a concatenation of StationID and sample date
   distinct(StationID, .keep_all = T) %>% 
-  dplyr::select(-UID)
+  dplyr::select(Coastal, StationID)
 
 # join coastal info
-stations <- read_excel('data/regionalRefStressStationList/BioSitesAll.xlsx', 'UniqueSitesAllReff') %>% 
+
+stations <- read_excel('data/regionalRefStressStationList/FinalRefSites_AllSites.xlsx', 'FinalSitesAllv3') %>%
+  group_by(UID) %>% 
+  mutate(n = n()) %>% 
+  filter(n > 1) %>% 
+  arrange(UID, desc(n)) %>% 
+  dplyr::select(n, everything())
+write.csv(stations, 'stationHelp.csv', row.names = F)
+
+stations <- read_excel('data/regionalRefStressStationList/FinalRefSites_AllSites.xlsx', 'FinalSitesAllv3') %>% 
   mutate(StationID = toupper(UID)) %>% # reserve UID for a concatenation of StationID and sample date
-  left_join(dplyr::select(stations1, StationID, Coastal), by ='StationID')%>% 
+  left_join(dplyr::select(stationsCoast, StationID, Coastal), by ='StationID')%>% 
   dplyr::select(-UID) %>% 
   mutate(StationID = case_when(StationID == '5AXNOTC000.04' ~ '5AXNOTc000.04',
                                TRUE ~ as.character(StationID)))  # rename dumb format
 
 
 #clean up workspace
-rm(SCRO); rm(SWRO); rm(VRO); rm(WCRO); rm(NRO); rm(NROcoast); rm(PRO); rm(PROcoast); rm(TROcoast); rm(stations1)
+rm(NROcoast); rm(PROcoast); rm(TROcoast); rm(stationsCoast)
+
+
+```
+
+Older method, included for reference. 
+```{r regional ref stress station lists, eval=FALSE}
+# SCRO <- read_excel('data/regionalRefStressStationList/RefStressDataFinal_SCRO.xlsx', sheet = 'JRH_Final_SCRO') %>%
+#   mutate(Coastal = FALSE)
+# SWRO <- read_excel('data/regionalRefStressStationList/RefStressDataFinal_SWRO.xlsx', sheet = 'JRH_Final_SWRO') %>%
+#   mutate(Coastal = FALSE)
+# VRO <- read_excel('data/regionalRefStressStationList/RefStressDataFinal_VRO.xlsx', sheet = 'JRH_Final_VRO') %>%
+#   mutate(Coastal = FALSE)
+# WCRO <- read_excel('data/regionalRefStressStationList/RefStressDataFinal_WCRO.xlsx', sheet = 'JRH_Final_WCRO') %>%
+#   mutate(Coastal = FALSE)
+# NRO <- read_excel('data/regionalRefStressStationList/RefStressDataFinal_NRO.xlsx', sheet = 'JRH_Final_NRO') %>%
+#   mutate(Coastal = FALSE)
+# NROcoast <- read_excel('data/regionalRefStressStationList/RefStressDataFinal_NRO_Coast.xlsx',
+#                        sheet = 'JRH_Final_NRO_Coast') %>%
+#   mutate(Coastal = TRUE)
+# PRO <- read_excel('data/regionalRefStressStationList/RefStressDataFinal_PRO.xlsx', sheet = 'JRH_Final_PRO') %>%
+#   mutate(Coastal = FALSE)
+# PROcoast <- read_excel('data/regionalRefStressStationList/RefStressDataFinal_PRO_Coast.xlsx',
+#                        sheet = 'JRH_Final_Comment_Coast') %>%
+#   mutate(Coastal = TRUE)
+# TROcoast <- read_excel('data/regionalRefStressStationList/RefStressDataFinal_TRO_Coast.xlsx',
+#                        sheet = 'JRH_Final_TRO_Coast2') %>%
+#   mutate(Coastal = TRUE)
+# 
+# # combine and just keep coastal vs not coastal designation
+# stations1 <- bind_rows(SCRO, SWRO, VRO, WCRO, NRO, NROcoast, PRO, PROcoast, TROcoast) %>%
+#   mutate(StationID = toupper(UID)) %>% # reserve UID for a concatenation of StationID and sample date
+#   distinct(StationID, .keep_all = T) %>% 
+#   dplyr::select(-UID)
+# 
+# # join coastal info
+# stations <- read_excel('data/regionalRefStressStationList/BioSitesAll.xlsx', 'UniqueSitesAllReff') %>% 
+#   mutate(StationID = toupper(UID)) %>% # reserve UID for a concatenation of StationID and sample date
+#   left_join(dplyr::select(stations1, StationID, Coastal), by ='StationID')%>% 
+#   dplyr::select(-UID) %>% 
+#   mutate(StationID = case_when(StationID == '5AXNOTC000.04' ~ '5AXNOTc000.04',
+#                                TRUE ~ as.character(StationID)))  # rename dumb format
+# 
+# 
+# #clean up workspace
+# rm(SCRO); rm(SWRO); rm(VRO); rm(WCRO); rm(NRO); rm(NROcoast); rm(PRO); rm(PROcoast); rm(TROcoast); rm(stations1)
 ```
 
 ## Organize benthic information 
@@ -157,6 +200,22 @@ Join these data and identify where information is missing.
 stationsSpatial <- left_join(benSamps, stations, by = 'StationID') %>% 
   left_join(stationSpatialPin, by = 'StationID') %>% 
   left_join(stationFullPin, by = c('StationID' = 'STATION_ID'))
+
+# fix WQS info if the stationFullPin doesn't have info
+if(nrow(filter(stationsSpatial, is.na(WQS_ID))) > 0){
+  WQSlookup_withStandards <- pin_get('ejones/WQSlookup-withStandards', board = 'rsconnect')
+  
+  fixMe <- filter(stationsSpatial, is.na(WQS_ID)) %>% 
+    dplyr::select(-c(WQS_ID:WQS_TIER_III)) %>% 
+    left_join(
+      # rename to pin names
+      dplyr::select(WQSlookup_withStandards, StationID, WQS_ID, WQS_CLASS = CLASS, WQS_SPSTDS = SPSTDS, 
+                    WQS_PWS = PWS, WQS_TROUT = Trout, WQS_TIER_III = Tier_III), by = 'StationID')
+  stationsSpatial <- bind_rows(filter(stationsSpatial, ! is.na(WQS_ID)),
+                               fixMe)
+  rm(fixMe); rm(WQSlookup_withStandards)
+}
+
 ```
 
 make sure one site 
@@ -232,30 +291,6 @@ Missing lat/lng info from CEDS?
 #missing <- filter(stationsSpatial2, is.na(Latitude))
 ```
 
-
-
-
-We need to send the nmds all categorical and continuous info in a single dataset, so join the date, gradient, etc. from benSamps to the station info for analysis.
-
-```{r}
-stationsSpatial_withAllData <- stationsSpatial2 %>% arrange(StationID, `Collection Date`)
-# stationsSpatial_withAllData <- left_join(
-#   dplyr::select(benSamps, StationID, `Collection Date`, Year, Gradient, Season, JulianDate),
-#   stationsSpatial2, by = c('StationID', 'Year')) %>% 
-#   mutate(UID = paste(StationID, year(`Collection Date`), Season, sep= '_')) %>% 
-#   dplyr::select(DataSource, JRH_Final_Ref_Cod, StationID, UID, everything()) %>% 
-#   arrange(StationID, `Collection Date`)
-
-# make sure no one has > 4 samples
-# View(stationsSpatial_withAllData %>%
-#   mutate(SampleN = 1:n()) %>%
-#   dplyr::select(SampleN, everything()) %>%
-#   arrange(desc(SampleN))
-# )
-```
-
-
-
 Missing watershed, Order, WQS info
 
 ```{r}
@@ -269,6 +304,119 @@ needWatershed <- filter(stationsSpatial2, is.na(totalArea_sqMile)) %>%
 
 
 
+### Update: After manual review, bring in final datasets
+
+only run once
+
+```{r WQS addition}
+# WQS <- readRDS('data/needSpatial/finalWQS.RDS') %>% 
+#   filter(! is.na(WQS_ID)) %>% 
+#   bind_rows(
+#     tibble(StationID = c('4AJHN000.01', '5BXAT000.30', '7-RTT000.74', '2-GDC000.52', '2-BSB000.20',
+#                          '2-CPN004.81', '7-TOM001.73'),
+#        WQS_ID = c('RL_4A_109354', 'EL_5B_030029', 'EL_7C_050117', 'RL_2B_175050', 'RL_2A_076264',
+#                   'RL_2C_268362', 'RL_7C_298739'),
+#        `Buffer Distance` = c('No connections within 80 m', 'No connections within 80 m',
+#                              'No connections within 80 m','No connections within 80 m', 
+#                              'No connections within 80 m','No connections within 80 m',
+#                              'No connections within 80 m'),
+#        Comments = c('IBI project review', 'IBI project review', 'IBI project review', 'IBI project review',
+#                     'IBI project review', 'IBI project review', 'IBI project review' )) )
+# 
+# stationsSpatial3 <- stationsSpatial2 %>% 
+#   left_join(dplyr::select(WQS, StationID, WQS_IDnew = WQS_ID), by = 'StationID') %>% 
+#   mutate(WQS_ID = case_when(is.na(WQS_ID) ~ as.character(WQS_IDnew),
+#                             TRUE~ as.character(WQS_ID))) %>% 
+#   filter(is.na(WQS_ID))
+#
+# # add these to the official WQSlookup and WQSlookup-withStandards pins
+# 
+# WQSlookup <- pin_get('ejones/WQSlookup', board = 'rsconnect')
+# WQSlookup_withStandards <- pin_get('ejones/WQSlookup-withStandards', board = 'rsconnect')
+# 
+# WQSlookup <- bind_rows(WQSlookup, WQS)
+# 
+# WQSlookupToDo <- filter(WQSlookup, StationID %in% WQS$StationID)
+# 
+# #bring in Riverine layers, valid for the assessment window
+# riverine <- st_read('C:/HardDriveBackup/GIS/WQS/WQS_layers_05082020.gdb', layer = 'riverine_05082020') %>%
+#   st_drop_geometry() # only care about data not geometry
+# 
+# WQSlookupFull <- left_join(WQSlookupToDo, riverine) %>%
+#   filter(!is.na(CLASS))
+# rm(riverine)
+# 
+# estuarineLines <- st_read('C:/HardDriveBackup/GIS/WQS/WQS_layers_05082020.gdb', layer = 'estuarinelines_05082020') %>%
+#   st_drop_geometry() # only care about data not geometry
+# 
+# WQSlookupFull <- left_join(WQSlookupToDo, estuarineLines) %>%
+#   filter(!is.na(CLASS)) %>%
+#   bind_rows(WQSlookupFull)
+# rm(estuarineLines)
+# 
+# WQSlookup_withStandards <- bind_rows(WQSlookup_withStandards, WQSlookupFull) # for pin
+# 
+# # pin back to server
+# pin(WQSlookup_withStandards, description = "WQS lookup table with Standards from metadata attribution application", board = "rsconnect")
+# pin(WQSlookup, description = "WQS lookup table from metadata attribution application", board = "rsconnect")
+```
+
+
+#### Bring in final Order info
+
+```{r}
+Order <- readRDS('data/needSpatial/finalOrder.RDS') %>% 
+  bind_rows(
+    tibble(StationID = c('2-CPN004.81','2-CRL001.83', '2-CRL004.04', '5ACHP002.03','7-GRS002.29', '7-PAR004.35','7-TOM001.73'),
+           STRAHLER = c('3','1','1','2','1','1','1'))  )
+
+fixOrder <- stationsSpatial2 %>% 
+  filter(is.na(Order)) %>% 
+  left_join(dplyr::select(Order, StationID, OrderNew = STRAHLER), by = 'StationID') %>% 
+  mutate(Order = case_when(is.na(Order) ~ as.numeric(OrderNew), 
+                           TRUE ~ as.numeric(Order))) %>% 
+  dplyr::select(-OrderNew)
+
+stationsSpatial3 <- filter(stationsSpatial2, !is.na(Order)) %>% 
+  bind_rows(fixOrder)
+
+```
+
+
+
+Double check we have everything populated that we need for NMDS
+
+```{r}
+map_df(stationsSpatial3, function(x) sum(is.na(x)))
+```
+
+
+
+
+We need to send the nmds all categorical and continuous info in a single dataset, so join the date, gradient, etc. from benSamps to the station info for analysis.
+
+```{r}
+stationsSpatial_withAllData <- stationsSpatial3 %>% arrange(StationID, `Collection Date`)
+# stationsSpatial_withAllData <- left_join(
+#   dplyr::select(benSamps, StationID, `Collection Date`, Year, Gradient, Season, JulianDate),
+#   stationsSpatial2, by = c('StationID', 'Year')) %>% 
+#   mutate(UID = paste(StationID, year(`Collection Date`), Season, sep= '_')) %>% 
+#   dplyr::select(DataSource, JRH_Final_Ref_Cod, StationID, UID, everything()) %>% 
+#   arrange(StationID, `Collection Date`)
+
+# make sure no one has > 4 samples
+View(stationsSpatial_withAllData %>%
+  mutate(SampleN = 1:n()) %>%
+  dplyr::select(SampleN, everything()) %>%
+  arrange(desc(SampleN)) %>% 
+    filter(SampleN > 4)
+)
+```
+
+
+
+
+
 
 ```{r}
 write_csv(stationsSpatial_withAllData, 'data/dataOut/stationsSpatial_withAllData.csv', na="")
@@ -276,12 +424,4 @@ write_csv(benthics, 'data/dataOut/benthics.csv', na="")
 
 ```
 
-
-
-```{r}
-
-FPissues <- pool %>% tbl(in_schema("wqm",  "Wqm_Field_Data_View")) %>%
-  filter(Fdt_Spg_Code == 'FP' & Fdt_Depth < 0.3) %>% 
-  as_tibble() 
-```
 

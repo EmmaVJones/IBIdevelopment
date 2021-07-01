@@ -47,7 +47,12 @@ removeRareTaxa <- function(benthics, # wide tibble of taxa count by station
          `Benthics Slim` = benthicsSlim) )
 }
 
-dataList <- removeRareTaxa(benthics, threshold,   c("JRH_Final_Ref_Cod", "StationID", "BenSampID" ,"Collection Date", "Collection DateTime", "RepNum"))#, 'Sum' ))
-
-View(dataList$`Taxa Math`)
-
+dataList <- removeRareTaxa(benthics, # dataset to analyze, can filter on whatever you want beforehand (e.g. ref, stress, play with ecoregions)
+                           threshold = 5, # drop taxa below 5% occurrence in dataset 
+                           groupingFields = c("JRH_Final_Ref_Cod", "StationID", "BenSampID" ,
+                                              "Collection Date", "Collection DateTime", "RepNum")) # fields that you don't want thrown into the math
+# how to view data that comes out of function
+View(dataList$`Taxa Math`) # taxa occurrence and percent breakdown
+View(dataList$`Taxa Kept`) # taxa higher or equal to input threshold
+View(dataList$`Taxa Dropped`) # taxa lower than threshold, dropped from further analyses
+View(dataList$`Benthics Slim`) # Taxa below threshold removed, individual counts logged
