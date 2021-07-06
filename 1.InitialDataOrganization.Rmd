@@ -62,15 +62,18 @@ stationsCoast <- bind_rows(NROcoast, PROcoast, TROcoast) %>%
 
 # join coastal info
 
-stations <- read_excel('data/regionalRefStressStationList/FinalRefSites_AllSites.xlsx', 'FinalSitesAllv3') %>%
-  group_by(UID) %>% 
-  mutate(n = n()) %>% 
-  filter(n > 1) %>% 
-  arrange(UID, desc(n)) %>% 
-  dplyr::select(n, everything())
-write.csv(stations, 'stationHelp.csv', row.names = F)
+# make sure no stations doubled
+# stations <- read_excel('data/regionalRefStressStationList/stationHelp_JRH.xlsx', sheet = 'FinalSitesAll_V4') %>% 
+#   #read_excel('data/regionalRefStressStationList/FinalRefSites_AllSites.xlsx', 'FinalSitesAllv3') %>%
+#   group_by(UID) %>% 
+#   mutate(n = n()) %>% 
+#   filter(n > 1) %>% 
+#   arrange(UID, desc(n)) %>% 
+#   dplyr::select(n, everything())
+####write.csv(stations, 'stationHelp.csv', row.names = F)
 
-stations <- read_excel('data/regionalRefStressStationList/FinalRefSites_AllSites.xlsx', 'FinalSitesAllv3') %>% 
+stations <- read_excel('data/regionalRefStressStationList/stationHelp_JRH.xlsx', sheet = 'FinalSitesAll_V4') %>% 
+  #read_excel('data/regionalRefStressStationList/FinalRefSites_AllSites.xlsx', 'FinalSitesAllv3') %>% 
   mutate(StationID = toupper(UID)) %>% # reserve UID for a concatenation of StationID and sample date
   left_join(dplyr::select(stationsCoast, StationID, Coastal), by ='StationID')%>% 
   dplyr::select(-UID) %>% 
@@ -294,7 +297,7 @@ Missing lat/lng info from CEDS?
 Missing watershed, Order, WQS info
 
 ```{r}
-needWQS <- filter(stationsSpatial_withAllData, is.na(WQS_ID)) %>% 
+needWQS <- filter(stationsSpatial2, is.na(WQS_ID)) %>% 
   distinct(StationID, .keep_all = T)
 needWatershed <- filter(stationsSpatial2, is.na(totalArea_sqMile)) %>% 
    distinct(StationID, .keep_all = T)
