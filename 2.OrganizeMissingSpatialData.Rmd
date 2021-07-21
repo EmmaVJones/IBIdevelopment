@@ -374,3 +374,14 @@ final <- bind_rows(final, manualReview)
 saveRDS(final, 'data/needSpatial/finalOrder.RDS')
 ```
 
+```{r}
+points <- left_join(needWatershed, finalOrder) %>% 
+  dplyr::select(StationID:EDASOrder, STRAHLER, BenSampID:`Target Count`) %>% 
+  mutate(Order = STRAHLER) %>% dplyr::select(-STRAHLER) %>% 
+  st_as_sf(coords = c("Longitude", "Latitude"),  # make spatial layer using these columns
+                                       remove = F, # remove these lat/lon cols from df
+                                       crs = 4326)
+
+
+```
+

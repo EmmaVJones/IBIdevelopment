@@ -172,6 +172,10 @@ benthics <- pin_get('ejones/benthics', board = 'rsconnect') %>%
   filter(BenSampID %in% benSamps$BenSampID) %>% 
   left_join(dplyr::select(benSamps, StationID, BenSampID, `Collection Date`, RepNum),
             by = c('BenSampID', 'StationID', 'RepNum')) %>% 
+  
+  # remove excluded taxa
+  filter(`Excluded Taxa` != -1) %>% 
+  
   group_by(StationID, BenSampID, RepNum) %>% 
   arrange(FinalID) %>%
   pivot_wider(id_cols = c('StationID','BenSampID','Collection Date', 'RepNum'), 
@@ -424,6 +428,7 @@ View(stationsSpatial_withAllData %>%
 ```{r}
 write_csv(stationsSpatial_withAllData, 'data/dataOut/stationsSpatial_withAllData.csv', na="")
 write_csv(benthics, 'data/dataOut/benthics.csv', na="")
+#write_csv(benthics, 'data/dataOut/benthics_ExcludedTaxaDropped.csv', na="")
 
 ```
 

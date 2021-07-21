@@ -1,0 +1,210 @@
+---
+title: "Watershed Autodelineation QA"
+author: "Emma Jones"
+date: "7/21/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(tidyverse) # version 1.3.0
+library(sf) # version 0.8-0
+library(readxl) # version 1.3.1
+library(leaflet) # version 2.0.3
+library(inlmisc) # version 0.4.9
+
+```
+
+
+## Background 
+
+This component of the IBI development project involves the manual review of all autodelineated watersheds. Since most stations are chosen off a 1:100k NHD and delineated using USGS Streamstats (1:24k NHD), there can be some issues with lat/lngs aligning with the intended segment. 
+
+For every station/watershed combination, the reviewer will:
+
+1) map both spatial products to ensure the autodelineation script produced a watershed
+2) ensure the watershed is representative of the station using Strahler order (1:100k) as a cross reference
+  * if a watershed is delineated for the incorrect segment, the correct watershed will be manually delineated in StreamStats and incorrect watershed removed
+  * if there are questions about which stream segment a station lat/lng represents, further investigation will be undertaken by the review using additional spatial layers, google maps, etc. 
+      * if no clarification can be achieved with additional data sources, the reviewer will organize the questionable station/watershed in a special review list that will be saved for meetings with JRH & EVJ
+  * if a watershed is correct, the reviewer will use good data management skills to ensure the point and polygon information are moved to special dataset
+  that passes QA
+  
+The reviewer may use R, ArcGIS, or a combination of the two to review all station and polygon information. All data that passes QA will be returned in a single file geodatabase with one featureclass of points and one featureclass of polygons. These data will then be intersected with landcover information for use in the IBI development project, probabilistic monitoring data, and other projects. All spatial information will be stored on DEQ's internal GIS REST service for use in future projects.
+
+
+## Methods
+
+Below the R workflow is outlined for the reviewer. Should review be conducted in ArcGIS, a similar procedure will be followed in the ArcMap environment.
+
+### Bring in data for review
+
+The following chunk sources autodelineated watersheds (completed by EVJ in a separate step of this project) from a single shapefile for review. The point (station) information with associated metadata (namely strahler order) is brought in from a spreadsheet and converted to a sf (spatial) object for review.
+
+```{r bring in data for review}
+# delineated watersheds
+watersheds <- st_read('data/GIS/delineations/StreamStats_watersheds.shp') 
+
+# sites that needed watershed info
+needWatershed <- readRDS('data/needSpatial/needWatershed.RDS') # missing Order info so go get that from cleaned up project data
+
+# extra metadata that is helpful for reviewing sites
+points <- read_csv('data/dataOut/stationsSpatial_withAllData.csv') %>% 
+  filter(StationID %in% needWatershed$StationID) %>% # only keep stations we need 
+  distinct(StationID, .keep_all = T) %>%  # lots of reps, drop multiple rows per StationID but keep all columns
+  dplyr::select(-c(Season, JulianDate, `Collection Date`, Year, EDASOrder, totalArea_sqMile:`Target Count`)) %>% # drop unnecessary columns for this analysis
+  dplyr::select(StationID, Order, everything()) %>% # make order easy to view
+  st_as_sf(coords = c("Longitude", "Latitude"),  # make spatial layer using these columns
+           remove = F, # don't remove these lat/lon cols from df
+           crs = 4326) # WQG84 for web mapping
+  
+
+# look at data
+View(watersheds %>% st_drop_geometry()) # Pro Tip: it is MUCH faster to View() spatial data if you drop the geometry column, that list column takes seemingly forever to render (especially for polygons) and usually isn't necessary for understanding a dataset
+View(points %>% st_drop_geometry())
+```
+
+
+### Bring in other useful spatial datasets
+
+The vafrm layer is the Virginia-specific freshwater probabilistic monitoring sampling frame. Most of the stations were selected off this layer (1:100k NHD) and thus don't align perfectly with the 1:24k watershed information that StreamStats produces by default. Use this layer to verify the site, watershed, and sampled segment (vafrm) are all talking about the same thing. 
+      
+```{r prob frame}
+vafrm <- st_read('data/GIS/vafrm_99_05Albers.shp') %>%
+  st_transform(4326) # change to WGS84 for web mapping
+```
+
+### Mapping function
+
+Below is a quick mapping function that will help us out with the manual review.
+
+```{r visual QA mapping function}
+
+mapMe <- function(watershedChoice, points, probFrame){
+  pointChoice <- filter(points, StationID %in% watershedChoice$UID) 
+  
+  watershedChoice <- mutate(watershedChoice, UID = droplevels(as.factor(UID)) )  
+
+  segments <- suppressWarnings(st_intersection(probFrame, st_buffer(watershedChoice,0))) # buffer by 0 helps with topology issues
+
+  pal <- colorFactor(
+      palette = topo.colors(5),
+      domain = watershedChoice$UID)
+  
+  CreateWebMap(maps = c("Topo","Imagery","Hydrography"), collapsed = TRUE) %>%
+    setView(-78, 37.5, zoom=6) %>%
+    addPolygons(data= watershedChoice,  color = 'black', weight = 1,
+                  fillColor=~pal(UID), #'blue', 
+                  fillOpacity = 0.5,stroke=3,
+                  group="Watershed",
+                  popup=leafpop::popupTable(watershedChoice, zcol=c('UID'))) %>%
+    addPolylines(data = segments,  color = 'blue', weight =3,
+                 group="Strahler Info", label = ~STRAHLER,
+                 popup=leafpop::popupTable(segments, zcol=c('STRAHLER'))) %>% #hideGroup("Strahler Info") %>%
+    addCircleMarkers(data = pointChoice, color='orange', fillColor='black', radius = 5,
+                     fillOpacity = 0.5,opacity=0.5,weight = 1,stroke=T, group="Station",
+                     label = ~StationID,
+                     popup=leafpop::popupTable(pointChoice, zcol = c('StationID', 'Order'))) %>%
+    inlmisc::AddSearchButton(group = 'Station', zoom = 15, textPlaceholder = "Search by StationID") %>% 
+    addLayersControl(baseGroups=c("Topo","Imagery","Hydrography"),
+      #baseGroups=c("Topo","Imagery","Hydrography"),
+                       overlayGroups = c('Station',"Strahler Info", 'Watershed'),
+                       options=layersControlOptions(collapsed=T),
+                       position='topleft')
+}
+```
+
+And double check all watersheds are appropriately delineated.
+
+```{r visual QA}
+# Can be reviewed one at a time
+mapMe(watersheds[1,], points, vafrm)
+
+# or a handful at once
+mapMe(watersheds[1:15,], points, vafrm)
+
+```
+
+### Organizational strategies
+
+Rolling through 700+ sites might be a bit difficult numerically. You can break review into smaller pieces by going by HUCs or subbasins. 
+
+```{r basin review}
+basinName <- unique(points$Basin_Code)[1]
+basinReview <- filter(points, Basin_Code %in% basinName)
+
+watershedByBasin <- filter(watersheds, UID %in% basinReview$StationID)
+
+mapMe(watershedByBasin[1:5,], points, vafrm) 
+# then mapMe(watershedByBasin[6:10,], points, vafrm)
+# then mapMe(watershedByBasin[11:15,], points, vafrm) # etc
+```
+
+
+### What next?
+
+Anything look off? If so, filter out those StationID's before they get saved to a shapefile. You will have to go to streamstats and manually choose the appropriate stream segment, then merge back to full basin watersheds shapefile.
+    
+```{r drop these sites for manual autodelineation}
+# identify problem sites
+dropMe <- c('') # keep adding sites that aren't correct to this  e.g. dropMe <- c('1AXJI000.38', '1AXJI000.39', '1AXJI000.40') 
+
+# drop the sites identified
+watershedsQAed <- filter(watersheds, ! UID %in% dropMe)
+# note, we are not dropping the DEQ lat/lng from the points file because this is the most accurate location information
+
+# organize lat/lngs for problem sites for delineation on streamstats website
+manuallyDelineateMe <- filter(points, StationID %in% dropMe) %>% 
+  dplyr::select(StationID, Latitude, Longitude, Order, everything())
+View(dropMe)
+```
+    
+For the station(s) listed above (if any):
+1. Go to https://streamstats.usgs.gov/ss/
+2. Enter each lat/lng, separated by a comma
+3. Choose the appropriate state (VA)
+4. Delineate: Use the 1:100k strahler stream order from the Order field above to choose the appropriate streamstats (1:24k) stream segment.
+5. Download Basin as a shapefile.
+6. Extract the zip file.
+7. Rename the 'globalwatershed' file to the name of the StationID
+**Pro Tip- select all four files (.dbf, .prj, .shp, .shx), press F2, paste the StationID into one file, press Enter... all renamed **
+8. Move the renamed watershed to GIS/delineations/streamStatsFixes/[[basinName]] (make sure there is a folder with the appropriate basin name)
+![directorystructure](methods/directoryStructure.png)
+Now bring back in the manually autodelineated watersheds and combine with the watersheds that passed QA filters.
+    
+```{r bring in watersheds}
+# Where did you save files relative to the working directory?
+savedHere <- paste0('data/GIS/delineations/streamStatsFixes/', basinName)
+
+# read in new watersheds after manual QA
+shapes <- gsub('.prj','',list.files( savedHere, pattern="*.prj", full.names=F))
+filenames <- paste0(savedHere, '/',shapes, '.shp')
+  
+# read in shapefiles and organize
+newSheds <- filenames %>%
+  map(st_read) %>%
+  map2(shapes,~mutate(.x,UID=.y)) %>% # make a StationID column
+  map(~dplyr::select(.,UID)) %>%
+  reduce(rbind) 
+
+# Combine with QAed watersheds
+watershedsQAed <- rbind(watershedsQAed, newSheds) %>% #rbind better for sf objects compared to bind_rows()
+  arrange(UID)
+  
+```
+    
+Double check everything looks good in the basin.
+    
+```{r map double check}
+mapMe(filter(watershedsQAed, UID %in% basinReview$StationID),
+             points, vafrm)
+```
+
+Save QAed watersheds and sites as shapefiles.
+    
+```{r save shapefiles}
+st_write(watershedsQAed, 'data/GIS/delineations/StreamStats_watershedsQAed.shp')
+st_write(points, paste0('data/GIS/delineations/StreamStats_points.shp'))
+```
+
+
