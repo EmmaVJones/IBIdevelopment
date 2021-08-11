@@ -1,0 +1,289 @@
+---
+title: "West Virginia Data Organization"
+author: "Emma Jones"
+date: "8/9/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(tidyverse)
+library(sf)
+#library(DBI)
+library(lubridate)
+#library(pool)
+#library(pins)
+#library(config)
+library(readxl)
+#library(dbplyr)
+
+```
+
+## Background
+
+This document walks through the data organization process of bringing in select WVA sites into the IBI development process to flesh out some areas where VA lacks sufficient data.
+
+### Bugs
+
+First bring in the WVA stations we want to use for IBI work (reference sites in central apps) and spring and fall final bug information from the Virginia Tolerance Value Attribution work circa 2018.
+
+```{r bug tol work}
+WVA <- read_excel('data/Jason/RefStressDataFinal_WV_Final_Emma.xlsx', sheet = 'JRH_Final_WVDEP-LatlongEco') %>% 
+  filter(JRH_Code == 'Ref')
+
+
+allSpringBugs <- read_csv('C:/HardDriveBackup/R/GitHub/VAattribution_round2/data/processedData/allSpringBugs.csv') %>% 
+  mutate(Season = 'Spring') %>% 
+  dplyr::select(UID, DataSource, StationID, CollDate, Year, Season, everything())
+allFallBugs <- read_csv('C:/HardDriveBackup/R/GitHub/VAattribution_round2/data/processedData/allFallBugs.csv') %>% 
+  mutate(Season = 'Fall') %>% 
+  dplyr::select(UID, DataSource, StationID, CollDate, Year, Season, everything())
+```
+
+Keep only the bug records from sites we want.
+
+```{r WVA slim}
+WVAbugs <- bind_rows(allSpringBugs, allFallBugs) %>% 
+  filter(StationID %in% WVA$JRH_Final_WVDEP.StationID) %>% 
+  # first group by StationID and Date to drop duplicate Rep1 samples
+  group_by(StationID, CollDate) %>% 
+  mutate(SampleN = 1:n()) %>% 
+  # look at samples with multiple rep1's
+  # dplyr::select(SampleN, everything()) %>%  
+  # arrange(desc(SampleN))
+  # write.csv(benSamps1, 'multiple rep 1s.csv', row.names = F)
+  filter(! SampleN > 1) %>%  # drop multiple rep 1s before filtering on max 4 samples per site
+  ungroup() %>% 
+  
+  # then drop multiple reps of the same season (not taken on the same day)
+  ##mutate(Year = year(`Collection Date`)) %>% 
+  group_by(StationID, Year, Season) %>% 
+  mutate(SampleN = 1:n()) %>% 
+  # look at samples with multiple rep1's in a season
+  # dplyr::select(SampleN, Year, Season, everything()) %>% 
+  # arrange(desc(SampleN)) %>% 
+  filter(! SampleN > 1) %>% 
+  
+  # then total all samples taken and drop any records > 4 for a station, starting the count at the most recent sample event
+  ungroup() %>% 
+  group_by(StationID) %>% 
+  arrange(desc(CollDate)) %>% 
+  mutate(CollDate = as.Date(CollDate),
+         SampleN = 1:n(),# number samples from most recent collection
+         JulianDate = yday(CollDate)) %>%  
+  # dplyr::select(SampleN, Year, Season, everything()) %>% 
+  # arrange(desc(SampleN)) %>% 
+  filter(SampleN <= 4)  # only keep most recent four samples
+
+
+# Any ref sites with no data?
+filter(WVAbugs, ! StationID %in% WVA$JRH_Final_WVDEP.StationID) # no rows, cool.
+```
+
+
+## Grab any environmental data available from Tol Value project
+
+```{r tol value env data}
+WVAenvData <- read_csv('C:/HardDriveBackup/R/GitHub/VAattribution_round2/data/processedData/finalEnvData.csv') %>% 
+  filter(UID %in% WVAbugs$UID)
+
+# any of this info from the original spreadsheet?
+filter(WVAenvData, is.na(Order)) %>% 
+  filter(StationID %in% filter(WVA, !is.na(Order))$JRH_Final_WVDEP.StationID)
+# nope. Need to get from WVA
+
+# write.csv(
+# filter(WVAenvData, is.na(Order)) %>% 
+#   distinct(StationID, .keep_all = T) %>% 
+#   dplyr::select(DataSource, StationID, LongitudeDD, LatitudeDD, Order), 'data/needSpatial/MissingOrder_WVA.csv', row.names = F)
+```
+
+Bring in order information from WVA. Order based on 1:100k NHD
+
+```{r WVA order}
+WVAorderData <- read_csv('data/needSpatial/MissingOrder_WVA_fromWVA.csv') %>% 
+  # apply same logic as before to streams not on 1:100k NHD
+  mutate(Order = case_when(Order == 0 ~ 1, 
+                           TRUE ~ as.numeric(Order)))
+
+WVAenvData <- left_join(WVAenvData, WVAorderData, by = c('DataSource', 'StationID', 'LongitudeDD', 'LatitudeDD')) %>% 
+  mutate(Order = coalesce(Order.x, Order.y)) %>% 
+  dplyr::select(DataSource:BioPanel, Order, everything()) %>% 
+  dplyr::select(-c(Order.x, Order.y))
+
+filter(WVAenvData, is.na(Order)) # okay bc just fish sites and fish will use area not order
+```
+
+Clean up workspace
+
+```{r}
+rm( allFallBugs); rm(allSpringBugs); rm(WVAorderData)
+```
+
+
+## Compare results to DEQ bug info 
+
+Bring in DEQ's bug data to identify any WVA taxonomic calls that may need to be adjusted to fit DEQ's data model.
+
+Make a list of DEQ's bugs
+
+```{r DEQ bugTime}
+benthics <- read_csv('data/dataOut/benthics_ExcludedTaxaDropped.csv') %>% 
+  pivot_longer(cols = -c(StationID:RepNum), names_to = 'Taxa', values_to = 'Individuals') %>% 
+  distinct(Taxa) %>% 
+  #dplyr::select(DEQtaxa = Taxa) %>% 
+  mutate(Agency = 'VA DEQ')
+```
+
+Same for WVA, but first clean up using the tolerance value workgroup logic from C:/HardDriveBackup/R/GitHub/VAattribution_round2/bugs_2_combineVAandWVA.R
+
+```{r WVA bugTime}
+WVAbugs1 <- mutate(WVAbugs,
+               Asellidae = Asellidae + Asellus + Caecidotea + Lirceus,
+               #`Barbaetis benfieldi` = Barbaetis, 
+               Branchiobdellidae = Branchiobdella,
+               Cambaridae = Cambaridae + Orconectes + Procambarus,
+               Tricorythodes = Tricorythodes + Leptohyphes,
+               Crangonyctidae = Stygobromus + Synurella,
+               Dytiscidae = Dytiscidae + Hydrovatus + Ilybius + Laccobius + Oreodytes,
+               Empididae = Empididae + Dolichocephala + Roederiodes,
+               Glossophoniidae = Glossiphonia,
+               Gomphidae = Gomphidae + `Ophiogomphus/Erpetogomphus`,
+               Helobdellidae = Helobdella,
+               Hydracarina = Atractides + Limnesiidae + Mideopsis + Sperchonopsis + Wettina + 
+                 Hygrobates + Lebertia + Sperchon + Torrenticola,
+               Psephenus = Psephenus + Dicranopselaphus, 
+               Lumbriculidae = Lumbriculidae + Eclipidrilus + Lumbriculus,
+               Lymnaidae = Pseudosuccinea + Stagnicola,
+               Naididae = Naididae + Dero + Uncinais + Nais + Ophidonais + Pristina,
+               Nematomrpha = Gordius,
+               Neopleiidae = Neoplea,
+               Yugus = Yugus + `Malirekus/Yugus`,
+               Acentrella = Acentrella + `Acentrella/Plauditus`,
+               Centroptilum = Centroptilum + `Centroptilum/Procloeon`,
+               Planorbidae = Menetus + Gyraulus + Helisoma,
+               Pleuroceridae = Pleuroceridae + Pleurocera + Elimia + Leptoxis + Lithasia,
+               Pseudocloeon = Labiobaetis,
+               Scirtidae = Celina,
+               Stratiomyiidae = Euparyphus,
+               Tricladida = Turbellaria,
+               Tubificidae = Tubificidae + Aulodrilus + Branchiura + Chaetogaster + Limnodrilus + 
+                 Quistradrilus + Rhyacodrilus + Spirosperma +  Stylodrilus + Slavina,
+               Valvatidae = Valvata,
+               Chelifera = Chelifera + `Chelifera/Metachela`,
+               Ephydridae =  Cirrula,
+               Hirudinea = Hirudinea + Erpobdella,
+               Ancylidae = Ferrissia + Laevapex,
+               Hydrobiidae = Hydrobiidae + Fossaria,
+               Limnophila = Limnophila + Lispoides,
+               Physidae = Physella,
+               Viviparidae = Viviparus,
+               `Chironomidae (A)` = Chironomidae + Ablabesmyia + Acricotopus + Apedilum +
+                 Bethbilbeckia + Brillia + Brundiniella + Bryophaenocladius + Camptocladius + 
+                 Cardiocladius + Chaetocladius + Chironominae + Chironomini + Chironomus + 
+                 Cladopelma + Cladotanytarsus + Clinotanypus + Compterosmittia + Conchapelopia + 
+                 `Conchapelopia/Helopelopia` + Constempellina + Corynoneura + Corynoptera + 
+                 Cricotopus + `Cricotopus/Orthocladius` + Cryptochironomus + Demicryptochironomus + 
+                 Diamesa + Diamesinae + Dicrotendipes + Diplocladius + Djalmabatista + Doithrix + 
+                 Einfeldia + Endochironomus + `Endochironomus/Tribelos` + Epoicocladius + 
+                 Eukiefferiella + Euryhapsis + Glyptotendipes + Goeldichironomus + Gymnometriocnemus + 
+                 Harnischia + Heleniella + Helopelopia + Heterotrissocladius + Hudsonimyia + Hydrobaenus + 
+                 Krenopelopia + Krenosmittia + Labrundinia + Larsia + Limnophyes + Lopescladius + 
+                 Meropelopia + Mesocricotopus + Mesosmittia + Metriocnemus + Micropsectra + 
+                 `Micropsectra/Tanytarsus` + Microtendipes + Monodiamesa + Monopelopia + Nanocladius + 
+                 Natarsia + Neostempellina + Neozavrelia + Nilotanypus + Nilothauma + Odontomesa + 
+                 Orthocladiinae + Orthocladius + Pagastia + Paraboreochlus + Parachaetocladius + 
+                 Parachironomus + Paracladopelma + Paracricotopus + Parakiefferiella + Paralauterborniella + 
+                 Paramerina + Parametriocnemus + Paraphaenocladius + Parapsectra + Paratanytarsus + 
+                 Paratendipes + Pentaneura + Phaenopsectra + `Phaenopsectra/Tribelos` + Platysmittia + 
+                 Polypedilum + Potthastia + Procladius + Prodiamesa +  Psectrocladius + Psectrotanypus + 
+                 Pseudochironomus + Pseudodiamesa + Pseudorthocladius + Pseudosmittia + Psilometriocnemus + 
+                 Rheocricotopus + Rheopelopia + Rheosmittia + Rheotanytarsus + Robackia + Saetheria + Smittia + 
+                 Stempellina + Stempellinella + Stenochironomus + Stictochironomus + Stilocladius + Sublettea + 
+                 Sympotthastia + Synorthocladius + Tanypodinae + Tanypus + Tanytarsini + Tanytarsus + 
+                 Thienemannia + Thienemanniella + Thienemannimyia + Tokunagaia + Tribelos + Trissopelopia + 
+                 Tvetenia + Unniella + Xenochironomus + Xylotopus + Zalutschia + Zavrelia + Zavreliella + 
+                 Zavrelimyia) %>%
+  select(-c(Asellus, Caecidotea, Lirceus, Branchiobdella,Orconectes, Procambarus,Leptohyphes,
+            Stygobromus, Synurella,Hydrovatus, Ilybius, Laccobius, Oreodytes, Dolichocephala, Roederiodes,
+            Glossiphonia,`Ophiogomphus/Erpetogomphus`,Helobdella, Atractides, Limnesiidae, Mideopsis, Sperchonopsis, 
+            Wettina, Dicranopselaphus, Eclipidrilus, Lumbriculus, 
+            Pseudosuccinea, Stagnicola, Dero, Uncinais,  Gordius, Neoplea, `Malirekus/Yugus`, `Acentrella/Plauditus`,
+            `Centroptilum/Procloeon`,  Menetus, Pleurocera, Labiobaetis, Celina, Euparyphus, Lipsothrix, Prionocera, Turbellaria,
+            Aulodrilus, Branchiura, Chaetogaster, Limnodrilus,Quistradrilus, Rhyacodrilus, Spirosperma,  Stylodrilus, Slavina,
+            Valvata, Mesovelia, Metrobates, Microvelia, Rhagovelia, `Chelifera/Metachela`, Cirrula, Clioperla , 
+            Elimia, Leptoxis, Lithasia, Erpobdella, Ferrissia, Laevapex, Fossaria, Gyraulus, Helisoma,
+            Hygrobates, Lebertia, Sperchon, Torrenticola, Lispoides, Nais, Ophidonais, Pristina,
+            Physella, Viviparus, Ablabesmyia, Acricotopus, Apedilum,
+            Bethbilbeckia, Brillia, Brundiniella, Bryophaenocladius, Camptocladius, Cardiocladius, Chaetocladius, Chironominae, 
+            Chironomini, Chironomus, Cladopelma, Cladotanytarsus, Clinotanypus, Compterosmittia, Conchapelopia, 
+            `Conchapelopia/Helopelopia`, Constempellina, Corynoneura, Corynoptera, Cricotopus, `Cricotopus/Orthocladius`, 
+            Cryptochironomus, Demicryptochironomus, Diamesa, Diamesinae, Dicrotendipes, Diplocladius, Djalmabatista, Doithrix,
+            Einfeldia, Endochironomus, `Endochironomus/Tribelos`, Epoicocladius, Eukiefferiella, Euryhapsis, Glyptotendipes, 
+            Goeldichironomus, Gymnometriocnemus, Harnischia, Heleniella, Helopelopia, Heterotrissocladius, Hudsonimyia, Hydrobaenus, 
+            Krenopelopia, Krenosmittia, Labrundinia, Larsia, Limnophyes, Lopescladius, Meropelopia, Mesocricotopus, Mesosmittia, 
+            Metriocnemus, Micropsectra, `Micropsectra/Tanytarsus`, Microtendipes, Monodiamesa, Monopelopia, Nanocladius, 
+            Natarsia, Neostempellina, Neozavrelia, Nilotanypus, Nilothauma, Odontomesa, Orthocladiinae, Orthocladius, Pagastia, 
+            Paraboreochlus, Parachaetocladius, Parachironomus, Paracladopelma, Paracricotopus, Parakiefferiella, Paralauterborniella, 
+            Paramerina, Parametriocnemus, Paraphaenocladius, Parapsectra, Paratanytarsus, Paratendipes, Pentaneura, Phaenopsectra, 
+            `Phaenopsectra/Tribelos`, Platysmittia, Polypedilum, Potthastia, Procladius, Prodiamesa,  Psectrocladius, Psectrotanypus, 
+            Pseudochironomus, Pseudodiamesa, Pseudorthocladius, Pseudosmittia, Psilometriocnemus, Rheocricotopus, Rheopelopia, 
+            Rheosmittia, Rheotanytarsus, Robackia, Saetheria, Smittia, Stempellina, Stempellinella, Stenochironomus, Stictochironomus,
+            Stilocladius, Sublettea, Sympotthastia, Synorthocladius, Tanypodinae, Tanypus, Tanytarsini, Tanytarsus,
+            Thienemannia, Thienemanniella, Thienemannimyia, Tokunagaia, Tribelos, Trissopelopia, Tvetenia, Unniella, Xenochironomus, 
+            Xylotopus, Zalutschia, Zavrelia, Zavreliella, Zavrelimyia, Chironomidae,
+            Archips, Gerris, Lymnaea, Merragata, Nematoda, Nemoura, Neoleptophlebia, Platyvelia, Prionoxystus, Trepobates, 
+            Veliidae))
+
+```
+
+Above didn't work. Back to OG plan.
+
+```{r real WVA work}
+benthicsWVA <- WVAbugs %>% ungroup() %>% 
+  pivot_longer(cols = -c(UID:Season, SampleN, JulianDate, RepNum), names_to = 'Taxa', values_to = 'Individuals') %>% 
+  distinct(Taxa) %>% 
+  mutate(Agency = 'WV DEP')
+  dplyr::select(WVAtaxa = Taxa)
+```
+
+Smash together to figure out what is in WVA and not in DEQ
+
+```{r bug smash}
+taxa <- full_join(benthics, benthicsWVA, by = 'Taxa')
+
+NeedHelp <- filter(taxa, is.na(Agency.x))
+```
+
+What taxa are valid (in VA's master taxa list but not in VA's ref site database) and what need additional work to use for this project?
+
+```{r master Taxa}
+# get ODS and server configuration settings
+conn <- config::get("connectionSettings")
+
+# connect to server
+board_register_rsconnect(key = conn$CONNECT_API_KEY,  #Sys.getenv("CONNECT_API_KEY"),
+                         server = conn$CONNECT_SERVER)#Sys.getenv("CONNECT_SERVER"))
+
+masterTaxa <- pin_get('ejones/masterTaxaGenus', board = 'rsconnect')
+
+
+NeedHelp1 <- filter(taxa, is.na(Agency.x)) %>% 
+  dplyr::select(-contains('Agency')) %>% 
+  filter(! Taxa %in% masterTaxa$FinalID) %>% 
+  left_join(masterTaxa %>% mutate(Genus1 = Genus), by = c("Taxa" = 'Genus1')) %>% # make extra Genus column to make the master taxa look intact
+  arrange(Genus)
+
+```
+
+
+
+ask for help.
+
+```{r}
+write_csv(taxa, 'data/dataOut/VA_WVA taxa join.csv', na="")
+write_csv(NeedHelp1, 'data/dataOut/WVA taxa help.csv', na="")
+```
+
+
+
