@@ -114,6 +114,36 @@ WVAenvData <- left_join(WVAenvData, WVAorderData, by = c('DataSource', 'StationI
 filter(WVAenvData, is.na(Order)) # okay bc just fish sites and fish will use area not order
 ```
 
+
+Finish matching env data format to VA data.
+
+
+```{r env data smash}
+envData <- read.csv('data/dataOut/stationsSpatial_withAllData.csv') %>% 
+  rename('Collection Date' = 'Collection.Date') %>% 
+  mutate(`Collection Date` = as.Date(as.character(`Collection Date`)) )
+
+WVAenvDataFin <- WVAenvData %>%
+  left_join(dplyr::select(WVAbugs, UID, StationID, `Collection Date` = CollDate, JulianDate),
+            by = c('UID', 'StationID')) %>% 
+  mutate(JRH_Final_Ref_Cod = as.character(NA),
+         Coastal = as.logical(NA),
+         monthday = as.numeric(paste0(sprintf("%02d",month(`Collection Date`)),
+                                      sprintf("%02d",day(`Collection Date`)))),
+         Season = case_when(monthday >= 0215 & monthday <= 0615 ~ 'Spring',
+                            monthday >= 0815 & monthday <= 1215 ~ 'Fall',
+                            TRUE ~ as.character("Outside Sample Window")),
+         totalArea_sqMile = AREA_SQ_MILES) %>% 
+  rename("Latitude" = "LatitudeDD", "Longitude" = "LongitudeDD", "US_L3NAME"= "EcoRegion") %>% 
+  dplyr::select(DataSource, JRH_Final_Ref_Cod , Coastal, StationID, UID, Year, Season, JulianDate, `Collection Date`,
+                Latitude, Longitude, US_L3NAME, totalArea_sqMile, Order)
+
+envDataVA_WVA <- bind_rows(envData, WVAenvDataFin)
+
+```
+
+
+
 Clean up workspace
 
 ```{r}
@@ -135,116 +165,14 @@ benthics <- read_csv('data/dataOut/benthics_ExcludedTaxaDropped.csv') %>%
   mutate(Agency = 'VA DEQ')
 ```
 
-Same for WVA, but first clean up using the tolerance value workgroup logic from C:/HardDriveBackup/R/GitHub/VAattribution_round2/bugs_2_combineVAandWVA.R
-
-```{r WVA bugTime}
-WVAbugs1 <- mutate(WVAbugs,
-               Asellidae = Asellidae + Asellus + Caecidotea + Lirceus,
-               #`Barbaetis benfieldi` = Barbaetis, 
-               Branchiobdellidae = Branchiobdella,
-               Cambaridae = Cambaridae + Orconectes + Procambarus,
-               Tricorythodes = Tricorythodes + Leptohyphes,
-               Crangonyctidae = Stygobromus + Synurella,
-               Dytiscidae = Dytiscidae + Hydrovatus + Ilybius + Laccobius + Oreodytes,
-               Empididae = Empididae + Dolichocephala + Roederiodes,
-               Glossophoniidae = Glossiphonia,
-               Gomphidae = Gomphidae + `Ophiogomphus/Erpetogomphus`,
-               Helobdellidae = Helobdella,
-               Hydracarina = Atractides + Limnesiidae + Mideopsis + Sperchonopsis + Wettina + 
-                 Hygrobates + Lebertia + Sperchon + Torrenticola,
-               Psephenus = Psephenus + Dicranopselaphus, 
-               Lumbriculidae = Lumbriculidae + Eclipidrilus + Lumbriculus,
-               Lymnaidae = Pseudosuccinea + Stagnicola,
-               Naididae = Naididae + Dero + Uncinais + Nais + Ophidonais + Pristina,
-               Nematomrpha = Gordius,
-               Neopleiidae = Neoplea,
-               Yugus = Yugus + `Malirekus/Yugus`,
-               Acentrella = Acentrella + `Acentrella/Plauditus`,
-               Centroptilum = Centroptilum + `Centroptilum/Procloeon`,
-               Planorbidae = Menetus + Gyraulus + Helisoma,
-               Pleuroceridae = Pleuroceridae + Pleurocera + Elimia + Leptoxis + Lithasia,
-               Pseudocloeon = Labiobaetis,
-               Scirtidae = Celina,
-               Stratiomyiidae = Euparyphus,
-               Tricladida = Turbellaria,
-               Tubificidae = Tubificidae + Aulodrilus + Branchiura + Chaetogaster + Limnodrilus + 
-                 Quistradrilus + Rhyacodrilus + Spirosperma +  Stylodrilus + Slavina,
-               Valvatidae = Valvata,
-               Chelifera = Chelifera + `Chelifera/Metachela`,
-               Ephydridae =  Cirrula,
-               Hirudinea = Hirudinea + Erpobdella,
-               Ancylidae = Ferrissia + Laevapex,
-               Hydrobiidae = Hydrobiidae + Fossaria,
-               Limnophila = Limnophila + Lispoides,
-               Physidae = Physella,
-               Viviparidae = Viviparus,
-               `Chironomidae (A)` = Chironomidae + Ablabesmyia + Acricotopus + Apedilum +
-                 Bethbilbeckia + Brillia + Brundiniella + Bryophaenocladius + Camptocladius + 
-                 Cardiocladius + Chaetocladius + Chironominae + Chironomini + Chironomus + 
-                 Cladopelma + Cladotanytarsus + Clinotanypus + Compterosmittia + Conchapelopia + 
-                 `Conchapelopia/Helopelopia` + Constempellina + Corynoneura + Corynoptera + 
-                 Cricotopus + `Cricotopus/Orthocladius` + Cryptochironomus + Demicryptochironomus + 
-                 Diamesa + Diamesinae + Dicrotendipes + Diplocladius + Djalmabatista + Doithrix + 
-                 Einfeldia + Endochironomus + `Endochironomus/Tribelos` + Epoicocladius + 
-                 Eukiefferiella + Euryhapsis + Glyptotendipes + Goeldichironomus + Gymnometriocnemus + 
-                 Harnischia + Heleniella + Helopelopia + Heterotrissocladius + Hudsonimyia + Hydrobaenus + 
-                 Krenopelopia + Krenosmittia + Labrundinia + Larsia + Limnophyes + Lopescladius + 
-                 Meropelopia + Mesocricotopus + Mesosmittia + Metriocnemus + Micropsectra + 
-                 `Micropsectra/Tanytarsus` + Microtendipes + Monodiamesa + Monopelopia + Nanocladius + 
-                 Natarsia + Neostempellina + Neozavrelia + Nilotanypus + Nilothauma + Odontomesa + 
-                 Orthocladiinae + Orthocladius + Pagastia + Paraboreochlus + Parachaetocladius + 
-                 Parachironomus + Paracladopelma + Paracricotopus + Parakiefferiella + Paralauterborniella + 
-                 Paramerina + Parametriocnemus + Paraphaenocladius + Parapsectra + Paratanytarsus + 
-                 Paratendipes + Pentaneura + Phaenopsectra + `Phaenopsectra/Tribelos` + Platysmittia + 
-                 Polypedilum + Potthastia + Procladius + Prodiamesa +  Psectrocladius + Psectrotanypus + 
-                 Pseudochironomus + Pseudodiamesa + Pseudorthocladius + Pseudosmittia + Psilometriocnemus + 
-                 Rheocricotopus + Rheopelopia + Rheosmittia + Rheotanytarsus + Robackia + Saetheria + Smittia + 
-                 Stempellina + Stempellinella + Stenochironomus + Stictochironomus + Stilocladius + Sublettea + 
-                 Sympotthastia + Synorthocladius + Tanypodinae + Tanypus + Tanytarsini + Tanytarsus + 
-                 Thienemannia + Thienemanniella + Thienemannimyia + Tokunagaia + Tribelos + Trissopelopia + 
-                 Tvetenia + Unniella + Xenochironomus + Xylotopus + Zalutschia + Zavrelia + Zavreliella + 
-                 Zavrelimyia) %>%
-  select(-c(Asellus, Caecidotea, Lirceus, Branchiobdella,Orconectes, Procambarus,Leptohyphes,
-            Stygobromus, Synurella,Hydrovatus, Ilybius, Laccobius, Oreodytes, Dolichocephala, Roederiodes,
-            Glossiphonia,`Ophiogomphus/Erpetogomphus`,Helobdella, Atractides, Limnesiidae, Mideopsis, Sperchonopsis, 
-            Wettina, Dicranopselaphus, Eclipidrilus, Lumbriculus, 
-            Pseudosuccinea, Stagnicola, Dero, Uncinais,  Gordius, Neoplea, `Malirekus/Yugus`, `Acentrella/Plauditus`,
-            `Centroptilum/Procloeon`,  Menetus, Pleurocera, Labiobaetis, Celina, Euparyphus, Lipsothrix, Prionocera, Turbellaria,
-            Aulodrilus, Branchiura, Chaetogaster, Limnodrilus,Quistradrilus, Rhyacodrilus, Spirosperma,  Stylodrilus, Slavina,
-            Valvata, Mesovelia, Metrobates, Microvelia, Rhagovelia, `Chelifera/Metachela`, Cirrula, Clioperla , 
-            Elimia, Leptoxis, Lithasia, Erpobdella, Ferrissia, Laevapex, Fossaria, Gyraulus, Helisoma,
-            Hygrobates, Lebertia, Sperchon, Torrenticola, Lispoides, Nais, Ophidonais, Pristina,
-            Physella, Viviparus, Ablabesmyia, Acricotopus, Apedilum,
-            Bethbilbeckia, Brillia, Brundiniella, Bryophaenocladius, Camptocladius, Cardiocladius, Chaetocladius, Chironominae, 
-            Chironomini, Chironomus, Cladopelma, Cladotanytarsus, Clinotanypus, Compterosmittia, Conchapelopia, 
-            `Conchapelopia/Helopelopia`, Constempellina, Corynoneura, Corynoptera, Cricotopus, `Cricotopus/Orthocladius`, 
-            Cryptochironomus, Demicryptochironomus, Diamesa, Diamesinae, Dicrotendipes, Diplocladius, Djalmabatista, Doithrix,
-            Einfeldia, Endochironomus, `Endochironomus/Tribelos`, Epoicocladius, Eukiefferiella, Euryhapsis, Glyptotendipes, 
-            Goeldichironomus, Gymnometriocnemus, Harnischia, Heleniella, Helopelopia, Heterotrissocladius, Hudsonimyia, Hydrobaenus, 
-            Krenopelopia, Krenosmittia, Labrundinia, Larsia, Limnophyes, Lopescladius, Meropelopia, Mesocricotopus, Mesosmittia, 
-            Metriocnemus, Micropsectra, `Micropsectra/Tanytarsus`, Microtendipes, Monodiamesa, Monopelopia, Nanocladius, 
-            Natarsia, Neostempellina, Neozavrelia, Nilotanypus, Nilothauma, Odontomesa, Orthocladiinae, Orthocladius, Pagastia, 
-            Paraboreochlus, Parachaetocladius, Parachironomus, Paracladopelma, Paracricotopus, Parakiefferiella, Paralauterborniella, 
-            Paramerina, Parametriocnemus, Paraphaenocladius, Parapsectra, Paratanytarsus, Paratendipes, Pentaneura, Phaenopsectra, 
-            `Phaenopsectra/Tribelos`, Platysmittia, Polypedilum, Potthastia, Procladius, Prodiamesa,  Psectrocladius, Psectrotanypus, 
-            Pseudochironomus, Pseudodiamesa, Pseudorthocladius, Pseudosmittia, Psilometriocnemus, Rheocricotopus, Rheopelopia, 
-            Rheosmittia, Rheotanytarsus, Robackia, Saetheria, Smittia, Stempellina, Stempellinella, Stenochironomus, Stictochironomus,
-            Stilocladius, Sublettea, Sympotthastia, Synorthocladius, Tanypodinae, Tanypus, Tanytarsini, Tanytarsus,
-            Thienemannia, Thienemanniella, Thienemannimyia, Tokunagaia, Tribelos, Trissopelopia, Tvetenia, Unniella, Xenochironomus, 
-            Xylotopus, Zalutschia, Zavrelia, Zavreliella, Zavrelimyia, Chironomidae,
-            Archips, Gerris, Lymnaea, Merragata, Nematoda, Nemoura, Neoleptophlebia, Platyvelia, Prionoxystus, Trepobates, 
-            Veliidae))
-
-```
-
-Above didn't work. Back to OG plan.
+Same for WVA. 
 
 ```{r real WVA work}
 benthicsWVA <- WVAbugs %>% ungroup() %>% 
   pivot_longer(cols = -c(UID:Season, SampleN, JulianDate, RepNum), names_to = 'Taxa', values_to = 'Individuals') %>% 
   distinct(Taxa) %>% 
   mutate(Agency = 'WV DEP')
-  dplyr::select(WVAtaxa = Taxa)
+  #dplyr::select(WVAtaxa = Taxa)
 ```
 
 Smash together to figure out what is in WVA and not in DEQ
@@ -258,6 +186,8 @@ NeedHelp <- filter(taxa, is.na(Agency.x))
 What taxa are valid (in VA's master taxa list but not in VA's ref site database) and what need additional work to use for this project?
 
 ```{r master Taxa}
+library(pins)
+
 # get ODS and server configuration settings
 conn <- config::get("connectionSettings")
 
@@ -277,13 +207,82 @@ NeedHelp1 <- filter(taxa, is.na(Agency.x)) %>%
 ```
 
 
-
 ask for help.
 
 ```{r}
-write_csv(taxa, 'data/dataOut/VA_WVA taxa join.csv', na="")
-write_csv(NeedHelp1, 'data/dataOut/WVA taxa help.csv', na="")
+# write_csv(taxa, 'data/dataOut/VA_WVA taxa join.csv', na="")
+# write_csv(NeedHelp1, 'data/dataOut/WVA taxa help.csv', na="")
 ```
 
 
+Greg Pond help file.
+
+```{r GregPond help}
+pond <- read_excel('data/Jason/WVA taxa help_GPcomments.xlsx')
+
+acceptGenus <- filter(pond, !is.na(FinalID)) %>% 
+  dplyr::select(Taxa, FinalID)
+
+benthicsWVAfin <- WVAbugs %>% ungroup() %>% 
+  pivot_longer(cols = -c(UID:Season, SampleN, JulianDate, RepNum), names_to = 'Taxa', values_to = 'Individuals') %>% 
+  filter(Individuals > 0 ) %>% 
+  left_join(acceptGenus, by = 'Taxa') %>%  # join in Greg's easy calls
+  mutate(Taxa = case_when(!is.na(FinalID) ~ FinalID,
+                          TRUE ~ Taxa)) %>% # recode FinalID to Taxa name where appropriate
+  dplyr::select(-FinalID) %>% 
+  # map the more difficult ones by hand
+  mutate(Taxa = case_when(Taxa == 'Ansiocentropus' ~ 'Anisocentropus',
+                          Taxa == 'Astioplax dolani' ~ 'Asioplax dolani',
+                          Taxa == 'Chironomidae (A)' ~ 'Chironomidae',
+                          Taxa == 'Libellulidae/Cordullidae' ~ 'Corduliidae',
+                          Taxa == 'Lymnaidae' ~ 'Lymnaeidae',
+                          Taxa == 'Nematomrpha' ~ 'Nematomorpha',
+                          Taxa == 'Nematopmorpha' ~ 'Nematomorpha',
+                          Taxa == 'Phyrganaeidae' ~ 'Phryganaeidae',
+                          Taxa == 'Phyrganea' ~ 'Phryganea',
+                          Taxa == 'Potmayia flava' ~ 'Potamayia flava',
+                          Taxa == 'Sphaeriidae' ~ 'Pisidiidae',
+                          Taxa == 'Stratiomyiidae' ~ 'Stratiomyidae',
+                          TRUE ~ Taxa)) %>% 
+  filter(! Taxa %in% c('Americaenis', 'Glossophoniidae','Helobdellidae', 'Nematomorpha', 'Nematomorpha', 
+                        'Phryganaeidae', 'Potamayia flava', 'Pyralidae','Neopleiidae'))# %>% 
+  # group_by(UID, DataSource, StationID, CollDate, Year, Season, RepNum, SampleN, JulianDate, Taxa) %>% 
+  # mutate(n = n())
+  # 
+  # summarise(Individuals = sum(Individuals, na.rm = T))
+  
+# run taxa analysis again to make sure everything matches up
+benthicsWVAfinQA <- benthicsWVAfin  %>%
+  distinct(Taxa) %>% 
+  mutate(Agency = 'WV DEP')
+
+taxa <- full_join(benthics, benthicsWVAfinQA, by = 'Taxa')
+
+# bring in VA again
+benthics <- read_csv('data/dataOut/benthics_ExcludedTaxaDropped.csv') %>% 
+  left_join(dplyr::select(envData, StationID, UID, `Collection Date`, DataSource), 
+            by = c('StationID', 'Collection Date')) %>% 
+  dplyr::select(DataSource, UID, everything())
+
+#pivot wider, smash with VA, double check everything fits
+benthicsWVAfinWide <- benthicsWVAfin %>% 
+  pivot_wider(id_cols = c("UID", "DataSource","StationID", "CollDate", "Year", "Season", "RepNum", "SampleN", "JulianDate"),
+              names_from = 'Taxa', values_from = 'Individuals') %>% 
+  mutate(BenSampID = as.character(NA),
+         `Collection DateTime` = as.POSIXct(NA)) %>% 
+  dplyr::select(DataSource, UID, StationID, BenSampID, `Collection Date` = CollDate,  `Collection DateTime`, RepNum, everything())
+
+benthicsVA_WVA <- bind_rows(
+  benthics,
+  benthicsWVAfinWide)
+```
+
+
+Save work
+
+```{r save combined}
+write_csv(benthicsVA_WVA, 'data/dataOut/benthicsVA_WVA.csv', na="")
+write_csv(envDataVA_WVA, 'data/dataOut/envDataVA_WVA.csv', na="")
+
+```
 

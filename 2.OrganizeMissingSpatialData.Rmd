@@ -33,12 +33,15 @@ Begin delineating sites.
 Break into chunks to ease processing. Using 50 site blocks. Repeat as many times as necessary.
 
 ```{r streamstats delineation}
-#bring in already delineated sites
+#bring in already delineated sites, if any
 doneWatersheds <- readRDS('watersheds.RDS')
 donePoints <- readRDS('points.RDS')
 
+# set aside X many sites to complete in a single run to avoid http issues with hitting API repeatedly
 needWatershedFilter <- filter(needWatershed, !StationID %in% doneWatersheds$UID)[1:50,]
-#needWatershed[1:50,]
+
+# the above logic does not work for the first run bc watersheds.RDS, etc. doesn't yet exist, use the following logic for the first run
+#needWatershedFilter <- needWatershed[1:50,]
 
 basinData <- streamStats_Delineation(state= 'VA',
                                      longitude = needWatershedFilter$Longitude, 
@@ -56,9 +59,6 @@ watersheds <- basinData$polygon %>%
 points <- basinData$point %>%
   reduce(rbind) %>%
   arrange(UID)
-
-#saveRDS(watersheds, 'watersheds50.RDS')
-#saveRDS(points, 'points50.RDS')
 ```
 
 Run back out to streamstats and get anyone that is missing
