@@ -1,0 +1,211 @@
+---
+title: "aquametBio Bug Metrics"
+author: "Emma Jones"
+date: "1/7/2022"
+output: html_document
+---
+
+# Run in R 3.6.2
+
+Run this part in 3.6.2 to use pins and pool (issue in 3.6.1) and preserve data for analysis in R 4.1.2. 
+
+This will be better long term to have archive of data instead of pulling from server for analyses.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+# 
+# library(tidyverse)
+# library(sf)
+# library(pool)
+# library(DBI)
+# library(pins)
+# library(config)
+# library(lubridate)
+# library(dbplyr)
+# 
+# 
+# # get configuration settings
+# conn <- config::get("connectionSettings")
+# 
+# # use API key to register board
+# board_register_rsconnect(key = conn$CONNECT_API_KEY,  #Sys.getenv("CONNECT_API_KEY"),
+#                           server = conn$CONNECT_SERVER)#Sys.getenv("CONNECT_SERVER"))
+# 
+# ## For testing: connect to ODS production
+# pool <- dbPool(
+#   drv = odbc::odbc(),
+#   Driver = "ODBC Driver 11 for SQL Server",#Driver = "SQL Server Native Client 11.0",
+#   Server= "DEQ-SQLODS-PROD,50000",
+#   dbname = "ODS",
+#   trusted_connection = "yes"
+# )
+```
+
+## Background
+
+This script picks up a few months after initial data organization and reference site analyses. This script pulls all bethic data and runs the 125 metrics provided in the aquametBio package. 
+
+### Pull benthic data
+
+```{r}
+# benthics <- pool %>% tbl(in_schema("wqm",  "Edas_Benthic_View")) %>%
+#   filter(WBS_TARGET_COUNT == 110) %>% 
+#         as_tibble() %>%
+#         rename( "StationID" = "STA_ID",
+#                 "BenSampID"  = "WBS_SAMP_ID",
+#                 "RepNum" = "WBS_REP_NUM",
+#                 "FinalID" = "WBMT_FINAL_ID",
+#                 "Individuals" = "WBE_INDIVIDUALS",
+#                 "ID Comments" = "WBE_COMMENT",
+#                 "Entered By" = "WBE_INSERTED_BY", # not in EDAS table but good info
+#                 "Taxonomist" = "TAXONOMIST_NAME",  # not in EDAS table but good info
+#                 "Entered Date" = "WBE_INSERTED_DATE") %>%
+#         mutate(`Excluded Taxa` = ifelse(WBE_EXCLUDED_TAXA_YN == "Y", -1, 0)) %>%
+#         dplyr::select(StationID, BenSampID, RepNum, FinalID, Individuals, `Excluded Taxa`, `ID Comments`, Taxonomist, `Entered By`, `Entered Date`)
+# 
+# benSamps <- pool %>% tbl(in_schema("wqm",  "Edas_Benthic_Sample_View")) %>%
+#   filter(WBS_SAMP_ID %in% !! unique(benthics$BenSampID)) %>% 
+#         as_tibble() %>%
+#         # fix names
+#         rename( "StationID" = "STA_ID",
+#                 "BenSampID"  = "WBS_SAMP_ID",
+#                 "RepNum" = "WBS_REP_NUM",
+#                 "Sample Comments" = "WBS_COMMENT",
+#                 "Entered By" = "WBS_INSERTED_BY", # not in EDAS table but good info
+#                 "Collected By" = "COLLECTOR_NAME",  # not in EDAS table but good info
+#                 "Entered Date" = "WBS_INSERTED_DATE",
+#                 "Gradient" = "WBCM_DESCRIPTION",
+#                 "Taxonomist" = "TAXONOMIST_NAME",  # not in EDAS table but good info
+#                 "Target Count" = "WBS_TARGET_COUNT",
+#                 "Field Team" = "WBS_FIELD_TEAM",
+#                 "Collection Date" = "FDT_DATE_TIME") %>%
+#         # Add sample season 
+#         mutate(monthday = as.numeric(paste0(sprintf("%02d",month(`Collection Date`)),
+#                                             sprintf("%02d",day(`Collection Date`)))),
+#                Season = case_when(monthday >= 0215 & monthday <= 0615 ~ 'Spring',
+#                                   monthday >= 0815 & monthday <= 1215 ~ 'Fall',
+#                                   TRUE ~ as.character("Outside Sample Window"))) %>%
+#         dplyr::select(StationID, BenSampID, RepNum, `Collection Date`, `Sample Comments`, `Collected By`, `Field Team`, `Entered By`,
+#                       Taxonomist, `Entered Date`, Gradient, `Target Count`, Season)
+# 
+# write.csv(benthics, 'data/aquametBioDataOut/benthics01072022.csv', row.names = F, na = '')
+# write.csv(benSamps, 'data/aquametBioDataOut/benSamps01072022.csv', row.names = F, na = '')
+
+```
+
+
+
+
+# Run in 4.1.2
+Run in R 4.1.2 for aquametBio and Hmisc
+
+```{r}
+library(tidyverse)
+library(aquametBio)
+library(Hmisc) # need to get %nin% to work
+library(readxl)
+source('aquametBio_specialFunctions/function_calcBentTaxMetsEVJ.R')
+source('aquametBio_specialFunctions/function_calcAllBentMetsEVJ.R')
+```
+
+
+Bring in master taxa list with genus calls
+
+```{r}
+masterTaxaList <- read_excel('data/masterTaxaGenus_01062022.xlsx', sheet = 'masterTaxaGenus') %>% # Emma update
+  mutate_at(c("FamTolVal", "TolVal", "GVSCI_TolVal"), as.numeric) %>% 
+  rename(FinalID_FFG = FFG) %>% # fix this before things get confusing
+  
+  # rename to desired format
+  rename(PHYLUM = Phylum, 
+         CLASS = Class,
+         ORDER = Order, 
+         FAMILY = Family,
+         SUBFAMILY = Subfamily, 
+         TRIBE = Tribe, 
+         GENUS = Genus,
+         # use genus level bugs for metrics
+         #TARGET_TAXON = GVSCI_FinalID,
+         FFG = GVSCI_FFG,
+         HABIT = GVSCI_Habit, 
+         PTV = GVSCI_TolVal) %>% 
+    #mutate(TAXA_ID = 1:n()) %>%  # give numeric unique identifier
+  mutate_if(is.character, str_to_upper) # package needs uppercase taxa names
+masterTaxaList[ masterTaxaList == "NA" ] <- NA
+
+masterTaxaListTarget <- masterTaxaList %>% 
+  #filter(Target == 1) # this will drop all higher level taxa from joining, not a good idea
+  arrange(GVSCI_FinalID, Target) %>% 
+  distinct(GVSCI_FinalID, .keep_all = T) %>% 
+  rename(TARGET_TAXON = GVSCI_FinalID) %>% 
+  mutate(TAXA_ID = 1:n()) %>% 
+  as.data.frame()
+  #rowwise() %>% 
+  #mutate(TAXA_ID = sum(3000, TAXA_ID))
+```
+Bring in archived benthics info
+
+```{r}
+benthics <- read.csv('data/aquametBioDataOut/benthics01072022.csv')
+benSamps <- read.csv('data/aquametBioDataOut/benSamps01072022.csv') %>% 
+  rename(`Collection Date` = 'Collection.Date',
+         "Sample Comments" = "Sample.Comments", 
+         "Collected By" = "Collected.By",
+         "Target Count" = "Target.Count")
+```
+
+
+Clean bug data for aquametBio analysis
+
+```{r}
+benthics <- benthics %>% 
+  rename(BENSAMPID = BenSampID) %>%  # assignDistinct() changes names to caps so adjust here to avoid issues later
+  mutate(FinalID = as.character(FinalID)) %>% 
+  mutate_if(is.character, str_to_upper) %>%   # convert names to all caps
+  
+  ## join to full master taxa list
+  #left_join(dplyr::select(masterTaxaList, FinalID, TARGET_TAXON, TAXA_ID),  by = "FinalID")
+  left_join(dplyr::select(masterTaxaList, FinalID, GVSCI_FinalID#TARGET_TAXON),  by = "FinalID")
+  ),  by = "FinalID") %>% 
+
+
+  # join to target level master taxa list for unique TAXA_ID
+  left_join(dplyr::select(masterTaxaListTarget, FinalID, TARGET_TAXON, TAXA_ID),  by = "FinalID")
+  
+benthicsPrep <- prepBentCts_WSA(
+  inCts = benthics,
+  inTaxa = masterTaxaListTarget,
+  sampID = "BENSAMPID",
+  ct = "Individuals",
+  taxa_id ="TAXA_ID"# "FinalID"#"TAXA_ID"
+)
+# benthics goes from 217948 to 203372 rows
+# saveRDS(benthicsPrep, 'data/aquametBioDataOut/benthicsPrep.RDS')
+# review this monday
+```
+
+
+Run metrics
+
+```{r}
+testMetrics <- calcAllBentMetsEVJ(indf = benthicsPrep,
+                               inTaxa = masterTaxaListTarget,#masterTaxaList %>% mutate(TAXA_ID = FinalID), 
+                               sampID = "BENSAMPID", #c('UID','SAMPLE_TYPE','SAMPLE_CAT') option to concat more
+                               dist = "IS_DISTINCT", 
+                               ct = "TOTAL", 
+                               taxa_id = "TAXA_ID", 
+                               ffg = "FFG",#"FFG", 
+                               habit = "HABIT",#"Habit", 
+                               ptv = "PTV")#"TolVal")
+```
+
+Tack on benthic sampling info
+
+```{r}
+testMetrics1 <- left_join(testMetrics, benSamps, by = c("BENSAMPID" = 'BenSampID')) %>% 
+  dplyr::select(StationID, BenSampID = BENSAMPID, RepNum, `Collection Date`, `Sample Comments`,
+                `Collected By`, Taxonomist, Gradient, `Target Count`, Season, everything()) %>% 
+  arrange(`Collection Date`, StationID, RepNum)
+write.csv(testMetrics1, 'data/aquametBioDataOut/aquametBio_run110.csv', row.names = F, na = '')
+```
+
