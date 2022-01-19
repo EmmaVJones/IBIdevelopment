@@ -49,7 +49,7 @@ This script picks up a few months after initial data organization and reference 
 
 ```{r}
 # benthics <- pool %>% tbl(in_schema("wqm",  "Edas_Benthic_View")) %>%
-#   filter(WBS_TARGET_COUNT == 110) %>% 
+#   filter(WBS_TARGET_COUNT == 200) %>%
 #         as_tibble() %>%
 #         rename( "StationID" = "STA_ID",
 #                 "BenSampID"  = "WBS_SAMP_ID",
@@ -64,7 +64,7 @@ This script picks up a few months after initial data organization and reference 
 #         dplyr::select(StationID, BenSampID, RepNum, FinalID, Individuals, `Excluded Taxa`, `ID Comments`, Taxonomist, `Entered By`, `Entered Date`)
 # 
 # benSamps <- pool %>% tbl(in_schema("wqm",  "Edas_Benthic_Sample_View")) %>%
-#   filter(WBS_SAMP_ID %in% !! unique(benthics$BenSampID)) %>% 
+#   filter(WBS_SAMP_ID %in% !! unique(benthics$BenSampID)) %>%
 #         as_tibble() %>%
 #         # fix names
 #         rename( "StationID" = "STA_ID",
@@ -79,7 +79,7 @@ This script picks up a few months after initial data organization and reference 
 #                 "Target Count" = "WBS_TARGET_COUNT",
 #                 "Field Team" = "WBS_FIELD_TEAM",
 #                 "Collection Date" = "FDT_DATE_TIME") %>%
-#         # Add sample season 
+#         # Add sample season
 #         mutate(monthday = as.numeric(paste0(sprintf("%02d",month(`Collection Date`)),
 #                                             sprintf("%02d",day(`Collection Date`)))),
 #                Season = case_when(monthday >= 0215 & monthday <= 0615 ~ 'Spring',
@@ -88,8 +88,8 @@ This script picks up a few months after initial data organization and reference 
 #         dplyr::select(StationID, BenSampID, RepNum, `Collection Date`, `Sample Comments`, `Collected By`, `Field Team`, `Entered By`,
 #                       Taxonomist, `Entered Date`, Gradient, `Target Count`, Season)
 # 
-# write.csv(benthics, 'data/aquametBioDataOut/benthics01072022.csv', row.names = F, na = '')
-# write.csv(benSamps, 'data/aquametBioDataOut/benSamps01072022.csv', row.names = F, na = '')
+# write.csv(benthics, 'data/aquametBioDataOut/benthics01132022.csv', row.names = F, na = '')
+# write.csv(benSamps, 'data/aquametBioDataOut/benSamps01132022.csv', row.names = F, na = '')
 
 ```
 
@@ -112,7 +112,7 @@ source('aquametBio_specialFunctions/function_calcAllBentMetsEVJ.R')
 Bring in master taxa list with genus calls
 
 ```{r}
-masterTaxaList <- read_excel('data/masterTaxaGenus_01062022.xlsx', sheet = 'masterTaxaGenus') %>% # Emma update
+masterTaxaList <- read_excel('data/masterTaxaGenus_01132022.xlsx', sheet = 'masterTaxaGenus') %>% # Emma update
   mutate_at(c("FamTolVal", "TolVal", "GVSCI_TolVal"), as.numeric) %>% 
   rename(FinalID_FFG = FFG) %>% # fix this before things get confusing
   
@@ -146,13 +146,22 @@ masterTaxaListTarget <- masterTaxaList %>%
 Bring in archived benthics info
 
 ```{r}
-benthics <- read.csv('data/aquametBioDataOut/benthics01072022.csv')
-benSamps <- read.csv('data/aquametBioDataOut/benSamps01072022.csv') %>% 
+benthics <- read.csv('data/aquametBioDataOut/benthics01132022.csv')
+benSamps <- read.csv('data/aquametBioDataOut/benSamps01132022.csv') %>% 
   rename(`Collection Date` = 'Collection.Date',
          "Sample Comments" = "Sample.Comments", 
          "Collected By" = "Collected.By",
          "Target Count" = "Target.Count")
 ```
+
+
+QA bug metrics, limit to just one sample
+
+```{r}
+#benthics <- filter(benthics, BenSampID == 'ABR3814')
+```
+
+
 
 
 Clean bug data for aquametBio analysis
@@ -167,10 +176,9 @@ benthics <- benthics %>%
   #left_join(dplyr::select(masterTaxaList, FinalID, TARGET_TAXON, TAXA_ID),  by = "FinalID")
   left_join(dplyr::select(masterTaxaList, FinalID, GVSCI_FinalID#TARGET_TAXON),  by = "FinalID")
   ),  by = "FinalID") %>% 
-
-
   # join to target level master taxa list for unique TAXA_ID
-  left_join(dplyr::select(masterTaxaListTarget, FinalID, TARGET_TAXON, TAXA_ID),  by = "FinalID")
+  left_join(dplyr::select(masterTaxaListTarget, TARGET_TAXON, TAXA_ID),  by = c("GVSCI_FinalID" = 'TARGET_TAXON')) #"FinalID"
+ # left_join(dplyr::select(masterTaxaListTarget, FinalID, TARGET_TAXON, TAXA_ID),  by = "FinalID")
   
 benthicsPrep <- prepBentCts_WSA(
   inCts = benthics,
@@ -185,27 +193,103 @@ benthicsPrep <- prepBentCts_WSA(
 ```
 
 
+QA benthicsPrep
+
+```{r}
+benthicsPrepReview <- left_join(benthicsPrep, masterTaxaListTarget) %>% 
+  dplyr::select(BENSAMPID, TAXA_ID, TOTAL, IS_DISTINCT,
+                TARGET_TAXON, FinalID, PTV, FFG, HABIT, everything())
+```
+
+
 Run metrics
 
 ```{r}
-testMetrics <- calcAllBentMetsEVJ(indf = benthicsPrep,
-                               inTaxa = masterTaxaListTarget,#masterTaxaList %>% mutate(TAXA_ID = FinalID), 
-                               sampID = "BENSAMPID", #c('UID','SAMPLE_TYPE','SAMPLE_CAT') option to concat more
-                               dist = "IS_DISTINCT", 
-                               ct = "TOTAL", 
-                               taxa_id = "TAXA_ID", 
-                               ffg = "FFG",#"FFG", 
-                               habit = "HABIT",#"Habit", 
-                               ptv = "PTV")#"TolVal")
+# testMetrics <- calcAllBentMetsEVJ(indf = benthicsPrep,
+#                                inTaxa = masterTaxaListTarget,#masterTaxaList %>% mutate(TAXA_ID = FinalID), 
+#                                sampID = "BENSAMPID", #c('UID','SAMPLE_TYPE','SAMPLE_CAT') option to concat more
+#                                dist = "IS_DISTINCT", 
+#                                ct = "TOTAL", 
+#                                taxa_id = "TAXA_ID", 
+#                                ffg = "FFG",#"FFG", 
+#                                habit = "HABIT",#"Habit", 
+#                                ptv = "PTV")#"TolVal")
 ```
 
 Tack on benthic sampling info
 
 ```{r}
-testMetrics1 <- left_join(testMetrics, benSamps, by = c("BENSAMPID" = 'BenSampID')) %>% 
-  dplyr::select(StationID, BenSampID = BENSAMPID, RepNum, `Collection Date`, `Sample Comments`,
-                `Collected By`, Taxonomist, Gradient, `Target Count`, Season, everything()) %>% 
-  arrange(`Collection Date`, StationID, RepNum)
-write.csv(testMetrics1, 'data/aquametBioDataOut/aquametBio_run110.csv', row.names = F, na = '')
+# testMetrics1 <- left_join(testMetrics, benSamps, by = c("BENSAMPID" = 'BenSampID')) %>% 
+#   dplyr::select(StationID, BenSampID = BENSAMPID, RepNum, `Collection Date`, `Sample Comments`,
+#                 `Collected By`, Taxonomist, Gradient, `Target Count`, Season, everything()) %>% 
+#   arrange(`Collection Date`, StationID, RepNum)
+# write.csv(testMetrics1, 'data/aquametBioDataOut/aquametBio_run110.csv', row.names = F, na = '')
+```
+
+Run groups of metrics and then save as individual sheets for IBI work
+
+Taxa metrics
+```{r taxa metrics}
+outTax <- calcBentTaxMetsEVJ(benthicsPrep,
+                          masterTaxaListTarget,
+                          sampID = "BENSAMPID", 
+                          dist='IS_DISTINCT',
+                          ct='TOTAL')
+```
+
+Tolerance metrics
+
+```{r}
+outTol <- calcBentTolMets(benthicsPrep,
+                          masterTaxaListTarget,
+                          sampID="BENSAMPID",
+                          dist='IS_DISTINCT',
+                          ct='TOTAL',
+                          ptv='PTV')
+```
+
+FFG metrics
+
+```{r}
+ffgMet <- calcBentFFGmets(benthicsPrep,
+                          masterTaxaListTarget,
+                          sampID="BENSAMPID",
+                          dist='IS_DISTINCT',
+                          ct='TOTAL')
+```
+
+Habit metrics 
+```{r}
+habitMet <- calcBentHabitMets(benthicsPrep,
+                          masterTaxaListTarget,
+                          sampID="BENSAMPID",
+                          dist='IS_DISTINCT',
+                          ct='TOTAL',
+                           habit = "HABIT")
+```
+Dominance metrics
+
+```{r}
+domMet <- calcBentDominMets(benthicsPrep,
+                          masterTaxaListTarget,
+                          sampID="BENSAMPID",
+                          dist='IS_DISTINCT',
+                          ct='TOTAL')
+
+```
+
+
+Write .xlsx with different sheets for types of metrics
+
+```{r}
+library(openxlsx)
+outBensamps <- benSamps %>% dplyr::select(StationID, BenSampID , RepNum, `Collection Date`, `Sample Comments`,
+                                          `Collected By`, Taxonomist, Gradient, `Target Count`, Season, everything())
+
+list_of_datasets <- list("BenSamps" = outBensamps, "Taxa Metrics" = outTax, 
+                         "Tolerance Metrics" = outTol, "FFG Metrics" = ffgMet, 
+                         "Habit Metrics" = habitMet, "Dominance Metrics" = domMet)
+write.xlsx(list_of_datasets, file = "data/aquametBioDataOut/aquametBio_run200_01192022.xlsx")
+
 ```
 
