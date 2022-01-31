@@ -169,7 +169,10 @@ QA bug metrics, limit to just one sample
 Clean bug data for aquametBio analysis
 
 ```{r}
-benthics <- benthics %>% 
+benthics <- benthics %>% #[1:6921,] %>% 
+  
+  #filter(BenSampID == 'MSC718') %>% 
+  
   rename(BENSAMPID = BenSampID) %>%  # assignDistinct() changes names to caps so adjust here to avoid issues later
   mutate(FinalID = as.character(FinalID)) %>% 
   mutate_if(is.character, str_to_upper) %>%   # convert names to all caps
