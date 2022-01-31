@@ -111,31 +111,53 @@ calcBentTaxMetsEVJ <- function (inCts, inTaxa, sampID = "UID", dist = "IS_DISTIN
   taxalong$TRAIT <- as.character(taxalong$TRAIT)
   totals <- aggregate(x = list(TOTLNIND = inCts.1$TOTAL, TOTLNTAX = inCts.1$IS_DISTINCT), 
                       by = inCts.1[c("SAMPID")], FUN = sum)
+  
+  
+  
+  
+  
+  
   inCts.1 <- merge(inCts.1, totals, by = "SAMPID")
   inCts.1$CALCPIND <- with(inCts.1, TOTAL/TOTLNIND)
   inCts.1$CALCPTAX <- with(inCts.1, IS_DISTINCT/TOTLNTAX)
   traitDF <- merge(inCts.1, taxalong, by = "TAXA_ID")
   outMet.1 <- aggregate(x = list(NIND = traitDF$TOTAL, NTAX = traitDF$IS_DISTINCT), 
-                        by = traitDF[c("SAMPID", "TRAIT", "TOTLNTAX")], 
+                        by = traitDF[c("SAMPID", "TRAIT", "TOTLNTAX", 
+                                       # EVJ edit add total individual for final output
+                                       'TOTLNIND')], 
                         FUN = sum)
   outMet.2 <- aggregate(x = list(PIND = traitDF$CALCPIND, PTAX = traitDF$CALCPTAX), 
-                        by = traitDF[c("SAMPID", "TRAIT", "TOTLNTAX")], 
+                        by = traitDF[c("SAMPID", "TRAIT", "TOTLNTAX",
+                                       # EVJ edit add total individual for final output
+                                       'TOTLNIND'
+                                       )], 
                         FUN = function(x) {
                           round(sum(x) * 100, 2)
                         })
   outMet <- merge(outMet.1, outMet.2, by = c("SAMPID", 
-                                             "TRAIT", "TOTLNTAX"))
+                                             "TRAIT", "TOTLNTAX",
+                                             # EVJ edit add total individual for final output
+                                             'TOTLNIND'
+                                             ))
   print("Done calculating taxonomy metrics.")
-  outLong <- reshape(outMet, idvar = c("SAMPID", "TOTLNTAX", 
+  outLong <- reshape(outMet, idvar = c("SAMPID", "TOTLNTAX",
+                                       # EVJ edit add total individual for final output
+                                       'TOTLNIND',
                                        "TRAIT"), direction = "long", varying = names(outMet)[!names(outMet) %in% 
-                                                                                               c("SAMPID", "TOTLNTAX", "TRAIT")], 
+                                                                                               c("SAMPID", "TOTLNTAX", "TRAIT",
+                                                                                                 # EVJ edit add total individual for final output
+                                                                                                 'TOTLNIND')], 
                      timevar = "variable", v.names = "value", 
                      times = names(outMet)[!names(outMet) %in% c("SAMPID", 
-                                                                 "TOTLNTAX", "TRAIT")])
+                                                                 "TOTLNTAX", "TRAIT",
+                                                                 # EVJ edit add total individual for final output
+                                                                 'TOTLNIND')])
   outLong$variable <- paste(outLong$TRAIT, outLong$variable, 
                             sep = "")
   outLong$TRAIT <- NULL
-  outWide <- reshape(outLong, idvar = c("SAMPID", "TOTLNTAX"), 
+  outWide <- reshape(outLong, idvar = c("SAMPID", "TOTLNTAX",
+                                        # EVJ edit add total individual for final output
+                                        'TOTLNIND'), 
                      direction = "wide", timevar = "variable", 
                      v.names = "value")
   names(outWide) <- gsub("value\\.", "", names(outWide))
@@ -146,7 +168,12 @@ calcBentTaxMetsEVJ <- function (inCts, inTaxa, sampID = "UID", dist = "IS_DISTIN
   # outWide$ORTHCHIRPIND <- with(outWide, ifelse(is.na(ORTHCHIRPIND) | 
   #                                                is.nan(ORTHCHIRPIND), 0, ORTHCHIRPIND))
   empty_tax <- data.frame(t(rep(NA, 56)), stringsAsFactors = F)
-  names(empty_tax) <- c("TOTLNTAX", "AMPHNTAX", 
+  names(empty_tax) <- c("TOTLNTAX", 
+                        
+                        # EVJ edit add total individual
+                        "TOTLNIND", 
+                        
+                        "AMPHNTAX", 
                         "AMPHPIND", "AMPHPTAX", "CHIRNTAX", 
                         "CHIRPIND", "CHIRPTAX", "CRUSNTAX", 
                         "CRUSPIND", "CRUSPTAX", "DIPTNTAX", 
@@ -170,7 +197,12 @@ calcBentTaxMetsEVJ <- function (inCts, inTaxa, sampID = "UID", dist = "IS_DISTIN
   outWide.all[is.na(outWide.all)] <- 0
   outWide.fin <- outWide.all
   outWide.fin$SAMPID <- NULL
-  outWide.fin <- outWide.fin[, c(sampID, "AMPHNTAX", 
+  outWide.fin <- outWide.fin[, c(sampID, 
+                                 
+                                 # EVJ edit, add in total taxa
+                                 "TOTLNTAX","TOTLNIND",
+                                 
+                                 "AMPHNTAX", 
                                  "AMPHPIND", "AMPHPTAX", "CHIRNTAX", 
                                  "CHIRPIND", "CHIRPTAX", "CRUSNTAX", 
                                  "CRUSPIND", "CRUSPTAX", "DIPTNTAX", 

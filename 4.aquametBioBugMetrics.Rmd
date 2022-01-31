@@ -106,6 +106,8 @@ library(Hmisc) # need to get %nin% to work
 library(readxl)
 source('aquametBio_specialFunctions/function_calcBentTaxMetsEVJ.R')
 source('aquametBio_specialFunctions/function_calcAllBentMetsEVJ.R')
+source('aquametBio_specialFunctions/function_prepBentCts_WSAEVJ.R')
+
 ```
 
 
@@ -180,13 +182,24 @@ benthics <- benthics %>%
   left_join(dplyr::select(masterTaxaListTarget, TARGET_TAXON, TAXA_ID),  by = c("GVSCI_FinalID" = 'TARGET_TAXON')) #"FinalID"
  # left_join(dplyr::select(masterTaxaListTarget, FinalID, TARGET_TAXON, TAXA_ID),  by = "FinalID")
   
-benthicsPrep <- prepBentCts_WSA(
+
+  
+benthicsPrep <- prepBentCts_WSA_EVJ(
   inCts = benthics,
   inTaxa = masterTaxaListTarget,
   sampID = "BENSAMPID",
   ct = "Individuals",
   taxa_id ="TAXA_ID"# "FinalID"#"TAXA_ID"
 )
+
+# EPA version recodes some bugs to their TAXA_ID and not ours
+# benthicsPrep <- prepBentCts_WSA(
+#   inCts = benthics,
+#   inTaxa = masterTaxaListTarget,
+#   sampID = "BENSAMPID",
+#   ct = "Individuals",
+#   taxa_id ="TAXA_ID"# "FinalID"#"TAXA_ID"
+# )
 # benthics goes from 217948 to 203372 rows
 # saveRDS(benthicsPrep, 'data/aquametBioDataOut/benthicsPrep.RDS')
 # review this monday
