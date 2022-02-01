@@ -26,18 +26,18 @@ VSCI <- pin_get('ejones/VSCIresults', board = 'rsconnect')
 
 # bring in aquametbio metrics
 aquamet <- left_join(
-  read_excel('data/aquametBioDataOut/aquametBio_run200_01192022.xlsx', sheet = 'Taxa Metrics'),
-  read_excel('data/aquametBioDataOut/aquametBio_run200_01192022.xlsx', sheet = 'Tolerance Metrics'), by = 'BENSAMPID') %>% 
-  left_join(read_excel('data/aquametBioDataOut/aquametBio_run200_01192022.xlsx', sheet = 'FFG Metrics'), by = 'BENSAMPID') %>% 
-  left_join(read_excel('data/aquametBioDataOut/aquametBio_run200_01192022.xlsx', sheet = 'Habit Metrics'), by = 'BENSAMPID') %>% 
-  left_join(read_excel('data/aquametBioDataOut/aquametBio_run200_01192022.xlsx', sheet = 'Dominance Metrics'), by = 'BENSAMPID')
+  read_excel('data/aquametBioDataOut/aquametBio_run200_02012022.xlsx', sheet = 'Taxa Metrics'),
+  read_excel('data/aquametBioDataOut/aquametBio_run200_02012022.xlsx', sheet = 'Tolerance Metrics'), by = 'BENSAMPID') %>% 
+  left_join(read_excel('data/aquametBioDataOut/aquametBio_run200_02012022.xlsx', sheet = 'FFG Metrics'), by = 'BENSAMPID') %>% 
+  left_join(read_excel('data/aquametBioDataOut/aquametBio_run200_02012022.xlsx', sheet = 'Habit Metrics'), by = 'BENSAMPID') %>% 
+  left_join(read_excel('data/aquametBioDataOut/aquametBio_run200_02012022.xlsx', sheet = 'Dominance Metrics'), by = 'BENSAMPID')
   
 # compare datasets
 compare <- left_join(aquamet, VSCI, by = c('BENSAMPID' = 'BenSampID')) %>% 
   group_by(BENSAMPID) %>% 
   rowwise() %>% 
   mutate(
-    #`Comp_Family Total Taxa` =   
+    `Comp_Family Total Taxa` =  abs(sum(`Family Total Taxa`, -  TOTLNTAX, na.rm = T)),
     `Comp_Family EPT Taxa`  = abs(sum(`Family EPT Taxa`, -  EPT_NTAX, na.rm = T)),
     `Comp_%Ephem` = abs(sum(`%Ephem`, - EPHEPIND, na.rm= T)),        
     #`Comp_%PT - Hydropsychidae` not in aquametbio
@@ -46,7 +46,9 @@ compare <- left_join(aquamet, VSCI, by = c('BENSAMPID' = 'BenSampID')) %>%
    # `Comp_Family %2 Dominant`   # not in aquamet
    # `Comp_Family HBI`  = abs(sum(`Family HBI`,- WTD_TV, na.rm= T)) not good comparison
    ) %>% 
-  dplyr::select(StationID, BENSAMPID, `Comp_Family EPT Taxa`, `Family EPT Taxa`, EPT_NTAX,
+  dplyr::select(StationID, BENSAMPID, 
+                `Comp_Family Total Taxa`, `Family Total Taxa`,  TOTLNTAX,
+                `Comp_Family EPT Taxa`, `Family EPT Taxa`, EPT_NTAX,
                 `Comp_%Ephem`, EPHEPIND, `%Ephem`,
         #        `Comp_%FamilyScraper`, `%FamilyScraper`, SCRPPTAX,
                 `Comp_%Chiro`, `%Chiro`,  CHIRPTAX)#,

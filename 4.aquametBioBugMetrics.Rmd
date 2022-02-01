@@ -317,7 +317,7 @@ outTax4 <- calcBentTaxMetsEVJ(benthicsPrep4,
 outTax <- bind_rows(outTax1, outTax2, outTax3, outTax4)
 # clean up workspace
 rm(benthicsPrep1);rm(benthicsPrep2);rm(benthicsPrep3);rm(benthicsPrep4)
-rm(outTax1);rm(outTax2);rm(outTax3);rm(outTax4)
+rm(outTax1);rm(outTax2);rm(outTax3);rm(outTax4); rm(uniqueBenthics)
 ```
 
 Tolerance metrics
