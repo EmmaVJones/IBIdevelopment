@@ -1,6 +1,12 @@
 
+# Tolerance and BCG attribute info
+BCG <- read_excel('data/MASTER_ATTRIBUTES_BUGS_06062019.xlsx', sheet = 'Sheet1') %>% 
+  dplyr::select(FinalID, GenusFinal, BCGattribute = `Virginia General BCG Attribute   First Choice`, 
+                `BCG DisOxy`:`BCG pctIMP`)
+
 masterTaxaGenus <- read_excel('data/masterTaxaGenus_01132022.xlsx', sheet = 'masterTaxaGenus') %>% # Emma update
-  mutate_at(c("FamTolVal", "TolVal", "GVSCI_TolVal"), as.numeric) 
+  mutate_at(c("FamTolVal", "TolVal", "GVSCI_TolVal"), as.numeric) #%>% 
+  #left_join(BCG, by = c('OldFinalID' = 'FinalID', 'GVSCI_FinalID' = 'GenusFinal'))
 
 ### USE FROM OTHER SIDE OF APP
 vmast <- masterTaxaGenus %>%
