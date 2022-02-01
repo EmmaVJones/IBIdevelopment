@@ -5,8 +5,8 @@ BCG <- read_excel('data/MASTER_ATTRIBUTES_BUGS_06062019.xlsx', sheet = 'Sheet1')
                 `BCG DisOxy`:`BCG pctIMP`)
 
 masterTaxaGenus <- read_excel('data/masterTaxaGenus_01132022.xlsx', sheet = 'masterTaxaGenus') %>% # Emma update
-  mutate_at(c("FamTolVal", "TolVal", "GVSCI_TolVal"), as.numeric) #%>% 
-  #left_join(BCG, by = c('OldFinalID' = 'FinalID', 'GVSCI_FinalID' = 'GenusFinal'))
+  mutate_at(c("FamTolVal", "TolVal", "GVSCI_TolVal"), as.numeric) %>% 
+  left_join(BCG, by = c('OldFinalID' = 'FinalID', 'GVSCI_FinalID' = 'GenusFinal'))
 
 ### USE FROM OTHER SIDE OF APP
 vmast <- masterTaxaGenus %>%
@@ -32,10 +32,19 @@ vmast <- masterTaxaGenus %>%
          
          ept4 = ifelse(ept == 1 & GVSCI_TolVal <= 4, 1, 0),
          
-         coll = ifelse(GVSCI_FFG %in% c("Collector", "Filterer"), 1, 0)         ) %>%
+         coll = ifelse(GVSCI_FFG %in% c("Collector", "Filterer"), 1, 0) ,
+         
+         # BCG metrics
+         att23 = ifelse(BCGattribute %in% c(2,3), 1, 0),
+         att5 = ifelse(BCGattribute %in% c(5), 1, 0)
+         
+         # stressor specific metrics? Jason request: what's the threshold?
+         
+         ) %>%
   # Then put it in long format so it can be merged to and input taxa list
   dplyr::select(GVSCI_FinalID, GVSCI_TolVal, e,p,t, ept,ptmin, scraper, chiro,`clinger-HS`,
-         `ept-h+c`, elmid, `e-b`, ept4, coll) %>% 
+         `ept-h+c`, elmid, `e-b`, ept4, coll,
+         att23, att5) %>% 
   distinct(GVSCI_FinalID, .keep_all = T) %>% # drop multiple rows bc working back to family level data from genus
   filter(!is.na(GVSCI_FinalID)) %>%
   pivot_longer(-GVSCI_FinalID, names_to = 'metric', values_to = 'metric_val') %>%
@@ -122,11 +131,14 @@ IBImetricCalculation <- function(bugTraits,bugdatrare,vmast){
       left_join(summaryStress(metprop,'ept-h+c', percent = T, 'EPT-H+C')) %>%
       left_join(summaryStress(metprop,'elmid', percent = F, 'Elmid')) %>%
       left_join(summaryStress(metprop,'e-b', percent = T, 'Ephem-B')) %>%
-  #    left_join(summaryStress(metprop,'ept4', percent = T, 'EPT-H+C')) %>%  # this won't work 
+  #    left_join(summaryStress(metprop,'ept4', percent = T, 'EPT-H+C')) %>%  # this won't work # / % EPT Taxa (with tol 0-4) what???
+      left_join(summaryStress(metprop,'att23', percent = F, 'BCGatt2&3')) %>%
+      left_join(summaryStress(metprop,'att23', percent = T, 'BCGatt2&3')) %>%
+      left_join(summaryStress(metprop,'att5', percent = F, 'BCGatt5')) %>%
+      left_join(summaryStress(metprop,'att5', percent = T, 'BCGatt5')) %>%
       
       
-      
-      replace(is.na(.), 0) 
+      replace(is.na(.), 0) )
   return(IBImetrics)
 }
 
