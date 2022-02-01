@@ -131,8 +131,24 @@ masterTaxaList <- read_excel('data/masterTaxaGenus_01132022.xlsx', sheet = 'mast
          FFG = GVSCI_FFG,
          HABIT = GVSCI_Habit, 
          PTV = GVSCI_TolVal) %>% 
-    #mutate(TAXA_ID = 1:n()) %>%  # give numeric unique identifier
-  mutate_if(is.character, str_to_upper) # package needs uppercase taxa names
+  #mutate(TAXA_ID = 1:n()) %>%  # give numeric unique identifier
+  mutate_if(is.character, str_to_upper) %>% # package needs uppercase taxa names
+  
+  # recode FFG to desired format: CF=collector-filterer, CG=collector-gatherer,PA=parasite,PI=Piercer,PR=predator,SC=scraper,SH=shredder
+  mutate(FFG = case_when(FFG == "COLLECTOR" ~ "CG", 
+                         FFG == "SCRAPER" ~ "SC",
+                         FFG == "SHREDDER" ~ "SH",
+                         FFG == "PREDATOR" ~ "PR",
+                         FFG == "FILTERER" ~ "CF",
+                         TRUE ~ as.character(NA)),
+ #  recode HABIT to desired format:  AT=attached,BU=burrower,CB=climber, CN=clinger,DV=diver,PK=planktonic,SK=skater,SP=sprawler,SW=swimmer    
+         HABIT = case_when(HABIT == "SWIMMER" ~ "SW", 
+                           HABIT == "CLINGER" ~ "CN",
+                           HABIT ==  "CLIMBER" ~ "CB",
+                           HABIT == "BURROWER" ~ "BU",
+                           HABIT == "SPRAWLER" ~ "SP",
+                           TRUE ~ as.character(NA))) 
+    
 masterTaxaList[ masterTaxaList == "NA" ] <- NA
 
 masterTaxaListTarget <- masterTaxaList %>% 
@@ -148,7 +164,7 @@ masterTaxaListTarget <- masterTaxaList %>%
 Bring in archived benthics info
 
 ```{r}
-benthics <- read.csv('data/aquametBioDataOut/benthics01132022.csv')
+benthics <- read.csv('data/aquametBioDataOut/benthics01132022.csv') 
 benSamps <- read.csv('data/aquametBioDataOut/benSamps01132022.csv') %>% 
   rename(`Collection Date` = 'Collection.Date',
          "Sample Comments" = "Sample.Comments", 
@@ -217,6 +233,28 @@ benthicsPrepReview <- left_join(benthicsPrep, masterTaxaListTarget) %>%
                 TARGET_TAXON, FinalID, PTV, FFG, HABIT, everything())
 ```
 
+Split benthicsPrep into 4 objects for taxonomic metric calculation (adding Total taxa/individuals destroyed function efficiency)
+
+```{r split by 4}
+uniqueBenthics <- benthicsPrep %>% 
+  distinct(BENSAMPID) %>% 
+  mutate(uniqueBenSampID = 1:n())
+
+benthicsPrep1 <- left_join(benthicsPrep, uniqueBenthics, by = 'BENSAMPID') %>% 
+  filter(uniqueBenSampID %in% c(1:1691)) %>% 
+  dplyr::select(-uniqueBenSampID)
+benthicsPrep2 <- left_join(benthicsPrep, uniqueBenthics, by = 'BENSAMPID') %>% 
+  filter(uniqueBenSampID %in% c(1692:3382)) %>% 
+  dplyr::select(-uniqueBenSampID)
+benthicsPrep3 <- left_join(benthicsPrep, uniqueBenthics, by = 'BENSAMPID') %>% 
+  filter(uniqueBenSampID %in% c(3383:5073)) %>% 
+  dplyr::select(-uniqueBenSampID)
+benthicsPrep4 <- left_join(benthicsPrep, uniqueBenthics, by = 'BENSAMPID') %>% 
+  filter(uniqueBenSampID %in% c(5074:6767)) %>% 
+  dplyr::select(-uniqueBenSampID)
+
+```
+
 
 Run metrics
 
@@ -246,11 +284,40 @@ Run groups of metrics and then save as individual sheets for IBI work
 
 Taxa metrics
 ```{r taxa metrics}
-outTax <- calcBentTaxMetsEVJ(benthicsPrep,
+# outTax <- calcBentTaxMetsEVJ(benthicsPrep,
+#                           masterTaxaListTarget,
+#                           sampID = "BENSAMPID", 
+#                           dist='IS_DISTINCT',
+#                           ct='TOTAL')
+
+
+
+outTax1 <- calcBentTaxMetsEVJ(benthicsPrep1,
                           masterTaxaListTarget,
                           sampID = "BENSAMPID", 
                           dist='IS_DISTINCT',
                           ct='TOTAL')
+outTax2 <- calcBentTaxMetsEVJ(benthicsPrep2,
+                          masterTaxaListTarget,
+                          sampID = "BENSAMPID", 
+                          dist='IS_DISTINCT',
+                          ct='TOTAL')
+outTax3 <- calcBentTaxMetsEVJ(benthicsPrep3,
+                          masterTaxaListTarget,
+                          sampID = "BENSAMPID", 
+                          dist='IS_DISTINCT',
+                          ct='TOTAL')
+outTax4 <- calcBentTaxMetsEVJ(benthicsPrep4,
+                          masterTaxaListTarget,
+                          sampID = "BENSAMPID", 
+                          dist='IS_DISTINCT',
+                          ct='TOTAL')
+
+
+outTax <- bind_rows(outTax1, outTax2, outTax3, outTax4)
+# clean up workspace
+rm(benthicsPrep1);rm(benthicsPrep2);rm(benthicsPrep3);rm(benthicsPrep4)
+rm(outTax1);rm(outTax2);rm(outTax3);rm(outTax4)
 ```
 
 Tolerance metrics
@@ -305,7 +372,7 @@ outBensamps <- benSamps %>% dplyr::select(StationID, BenSampID , RepNum, `Collec
 list_of_datasets <- list("BenSamps" = outBensamps, "Taxa Metrics" = outTax, 
                          "Tolerance Metrics" = outTol, "FFG Metrics" = ffgMet, 
                          "Habit Metrics" = habitMet, "Dominance Metrics" = domMet)
-write.xlsx(list_of_datasets, file = "data/aquametBioDataOut/aquametBio_run200_01192022.xlsx")
+write.xlsx(list_of_datasets, file = "data/aquametBioDataOut/aquametBio_run200_02012022.xlsx")
 
 ```
 
