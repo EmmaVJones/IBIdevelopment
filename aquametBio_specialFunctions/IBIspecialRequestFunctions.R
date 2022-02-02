@@ -22,28 +22,26 @@ vmast <- masterTaxaGenus %>%
          `clinger-HS` = ifelse(GVSCI_Habit == 'Clinger' & ! Family %in% c("Hydropsychidae","Simuliidae"), 1, 0),
          
          # new for IBI development
-         c = ifelse(Genus == 'Cheumatopsyche', 1, 0),
-         `ept-h` = ifelse(ept == 1 & Family != 'Hydropsychidae', 1, 0),
-         `ept-h+c` = ifelse(`ept-h` > 0 | c > 0, 1 ,0),
+         #c = ifelse(Genus == 'Cheumatopsyche', 1, 0),
+         `ept-h` = ifelse(ept == 1 & Family != 'Hydropsychidae', 1, 0), # removing genus == Cheumatopsyche doesn't matter since it is already filtered with family hydropsychidae & Genus != 'Cheumatopsyche', 1, 0),
+         #`ept-h+c` = ifelse(`ept-h` > 0 | c > 0, 1 ,0),
          
          elmid = ifelse(Family == 'Elmidae', 1, 0),
          
          `e-b` = ifelse(Order=="Ephemeroptera" & Family != "Baetidae", 1 , 0),
          
-         ept4 = ifelse(ept == 1 & GVSCI_TolVal <= 4, 1, 0),
+         `ept-h-b` = ifelse(ept == 1 & ! Family %in% c("Hydropsychidae","Baetidae"), 1, 0),
+         
+         `ept4.2` = ifelse(ept == 1 & GVSCI_TolVal <= 4.2, 1, 0),
          
          coll = ifelse(GVSCI_FFG %in% c("Collector", "Filterer"), 1, 0) ,
          
          # BCG metrics
          att23 = ifelse(BCGattribute %in% c(2,3), 1, 0),
-         att5 = ifelse(BCGattribute %in% c(5), 1, 0)
-         
-         # stressor specific metrics? Jason request: what's the threshold?
-         
-         ) %>%
+         att5 = ifelse(BCGattribute %in% c(5), 1, 0) ) %>% #View(filter(vmast, ept == 1))
   # Then put it in long format so it can be merged to and input taxa list
   dplyr::select(GVSCI_FinalID, GVSCI_TolVal, e,p,t, ept,ptmin, scraper, chiro,`clinger-HS`,
-         `ept-h+c`, elmid, `e-b`, ept4, coll,
+         `ept-h`, elmid, `e-b`, `ept-h-b`, `ept4.2`, coll,
          att23, att5) %>% 
   distinct(GVSCI_FinalID, .keep_all = T) %>% # drop multiple rows bc working back to family level data from genus
   filter(!is.na(GVSCI_FinalID)) %>%
