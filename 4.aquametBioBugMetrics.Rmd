@@ -187,7 +187,7 @@ Clean bug data for aquametBio analysis
 ```{r}
 benthics <- benthics %>% #[1:6921,] %>% 
   
-  #filter(BenSampID == 'MSC718') %>% 
+  filter(BenSampID == '3-RAP10109') %>% 
   
   rename(BENSAMPID = BenSampID) %>%  # assignDistinct() changes names to caps so adjust here to avoid issues later
   mutate(FinalID = as.character(FinalID)) %>% 

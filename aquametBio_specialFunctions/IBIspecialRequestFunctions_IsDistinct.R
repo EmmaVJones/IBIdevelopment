@@ -121,8 +121,8 @@ IBImetrics <- function(benthicsPrep, masterTaxaListBCGTarget){
       left_join(summaryStressNEW(metpropNEW, 'ptmin', T, 'PT - Hydropsychidae')) %>% 
       left_join(summaryStressNEW(metpropNEW,'scraper', T, 'GenusScraper')) %>% 
       left_join(summaryStressNEW(metpropNEW,'chiro', T, 'Chiro')) %>%
-      #      left_join(pDom2(bugdatrare, bugtotals,'Genus %2 Dominant')) %>%
-      #      left_join(hilsindex(bugdatrare,hiltax,'Genus HBI')) %>% 
+      left_join(pDom2NEW(benthicsPrep, bugtotalsNEW,'Genus %2 Dominant')) %>%
+      left_join(hilsindexNEW(benthicsPrep,hiltax,'Genus HBI')) %>% 
       # new metrics
       left_join(summaryStressNEW(metpropNEW,'ept-h+c', percent = T, 'EPT-H+C')) %>%
       left_join(summaryStressNEW(metpropNEW,'elmid', percent = F, 'Elmid')) %>%
@@ -164,7 +164,7 @@ IBImetrics <- function(benthicsPrep, masterTaxaListBCGTarget){
       left_join(summaryStressNEW(BCGmath(BCGorg, "BCG pctIMP"  , 'BCGatt2&3', c(2,3)), 'BCGatt2&3', percent = T, 'BCG_pctIMP_att2&3')) %>%
       left_join(summaryStressNEW(BCGmath(BCGorg, "BCG pctIMP"  , 'BCGatt5', c(5)), 'BCGatt5', percent = T, 'BCG_pctIMP_att5')) )
    
-  
+  return(IBImetrics)
 }
 
 
@@ -172,9 +172,9 @@ IBImetrics <- function(benthicsPrep, masterTaxaListBCGTarget){
 
 
 
-# fieldName <- 'BCGattribute'
-# metricName <- 'att23'
-# includedAttributes <- c(2,3)
+fieldName <- 'BCGattribute'
+metricName <- 'att23'
+includedAttributes <- c(2,3)
 
 BCGmath <- function(BCGorg, fieldName, metricName, includedAttributes){
   BCGorg %>% as_tibble() %>% 
@@ -184,11 +184,10 @@ BCGmath <- function(BCGorg, fieldName, metricName, includedAttributes){
     filter(!is.na(filterField)) %>% # drop rows without attribution
     mutate(total = n()) %>% 
     filter(filterField %in% includedAttributes) %>% 
-    summarise(metric = metricName,
+    summarise(metric = unique(metricName),
               metrich = n(),
-              total = total,
-              metprop = metrich / total) %>% # why isn't this summarizing??
-    distinct(BENSAMPID, .keep_all = T)
+              total = unique(total),
+              metprop = metrich / total)
 }
 #BCGmath(BCGorg, 'BCGattribute', 'att5', c(5))
 
@@ -225,7 +224,6 @@ metprop_function_NEW <- function(x,bugtotals){
 #metprop <- metprop_function_NEW(benthicsPrepTaxa, bugtotals)
 
 
-#y <- bugdatrare
 # y <- benthicsPrepTaxa
 
 #The first 5 metrics decrease with stress
@@ -258,4 +256,50 @@ summaryStressNEW <- function(metpropNEW, metricName, percent, specialName){
   }
 }
 #summaryStressNEW(metpropNEW,'ept', percent = F, NA)
+
+# ** % Dominant 2 Taxa---- *** note this is programmed differently than % Dom 5 metric (on purpose)
+pickTopTwoDomNEW <- function(y){
+  #y %>%
+  filter(y, IS_DISTINCT >= 1 ) %>%
+    group_by(BENSAMPID, TAXA_ID) %>% 
+    summarise(twodtot=sum(TOTAL)) %>%
+    top_n(n=2, wt=twodtot) %>% #returns top n rows.  but if 2nd taxa is tied, returns all rows
+    ungroup() %>% 
+    group_by(BENSAMPID) %>%
+    arrange(BENSAMPID, desc(twodtot)) %>% #These two arrange lines put the family in descending order
+    slice(1:2)} #incase there is tie drop extra taxa, dom 5 metrics keep everyone!
+
+pDom2NEW <- function(y, bugtotals, specialName){
+  top2 <- pickTopTwoDomNEW(y)
+  left_join(top2, bugtotalsNEW, by ="BENSAMPID") %>% 
+    mutate(pdom=(twodtot/bugtotal)*100) %>%   
+    select(BENSAMPID,pdom) %>%
+    group_by(BENSAMPID) %>% 
+    summarise(pdom2=sum(pdom)) %>% 
+    rename(!! quo_name(specialName) := pdom2 ) }
+#pDom2NEW(benthicsPrep, bugtotalsNEW,'Genus %2 Dominant')
+
+
+# **Hisenhoff Index----
+
+#Hilsenhoff Index taxa info
+#hiltax <- filter(vmast, metric == 'TolVal') %>%
+#  group_by(GVSCI_FinalID) %>%
+#  summarise(TolVal = mean(metric_val))
+
+#y <-  benthicsPrep
+
+#Raw Calculations for Hilsenhoff Index and Shannon Diversity  
+hilsindexNEW <- function(y, hiltax, specialName){
+  left_join(y, hiltaxNEW, by="TAXA_ID") %>%
+    group_by(BENSAMPID) %>% 
+    mutate(nxa = TOTAL * TolVal, 
+           sumn = sum(TOTAL)) %>% 
+    filter(!is.na(TolVal) & IS_DISTINCT > 0) %>% 
+    group_by(BENSAMPID) %>% 
+    summarise(hilsindex = sum(nxa)/sum(TOTAL)) %>% 
+    rename(!! quo_name(specialName) := hilsindex ) 
+}
+
+#hilsindexNEW(y,hiltax,'Genus HBI')
 
