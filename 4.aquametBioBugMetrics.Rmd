@@ -187,7 +187,7 @@ Clean bug data for aquametBio analysis
 ```{r}
 benthics <- benthics %>% #[1:6921,] %>% 
   
-  filter(BenSampID == '3-RAP10109') %>% 
+  #filter(BenSampID == '3-RAP10109') %>% 
   
   rename(BENSAMPID = BenSampID) %>%  # assignDistinct() changes names to caps so adjust here to avoid issues later
   mutate(FinalID = as.character(FinalID)) %>% 
@@ -362,6 +362,78 @@ domMet <- calcBentDominMets(benthicsPrep,
 ```
 
 
+### Bonus special request metrics
+
+These metrics are from the VDEQ biologists to supplement the aquametBio metrics for more regional/VA specific information.
+
+```{r data prep}
+source('aquametBio_specialFunctions/IBIspecialRequestFunctions_IsDistinct.R')
+
+BCG <- read_excel('data/MASTER_ATTRIBUTES_BUGS_06062019.xlsx', sheet = 'Sheet1') %>% 
+  dplyr::select(FinalID, GenusFinal, BCGattribute = `Virginia General BCG Attribute   First Choice`, 
+                `BCG DisOxy`:`BCG pctIMP`) %>% 
+  mutate_at(c("BCGattribute", "BCG DisOxy", "BCG acidity", "BCG Alkalinity", "BCG spCond", "BCG Chloride", 
+              "BCG Sulfate", "BCG TN.TP",  "BCG totHab", "BCG RBS", "BCG pctIMP"), as.numeric) %>% 
+  mutate(BCGattribute = case_when(BCGattribute == 0 ~ as.numeric(NA),
+                                  TRUE ~ BCGattribute))
+
+masterTaxaListBCG <- read_excel('data/masterTaxaGenus_01132022.xlsx', sheet = 'masterTaxaGenus') %>% # Emma update
+  mutate_at(c("FamTolVal", "TolVal", "GVSCI_TolVal"), as.numeric) %>% 
+  rename(FinalID_FFG = FFG) %>% # fix this before things get confusing
+  
+  # add BCG information
+  left_join(BCG, by = c('OldFinalID' = 'FinalID', 'GVSCI_FinalID' = 'GenusFinal')) %>% 
+  
+  
+  # rename to desired format
+  rename(PHYLUM = Phylum, 
+         CLASS = Class,
+         ORDER = Order, 
+         FAMILY = Family,
+         SUBFAMILY = Subfamily, 
+         TRIBE = Tribe, 
+         GENUS = Genus,
+         # use genus level bugs for metrics
+         #TARGET_TAXON = GVSCI_FinalID,
+         FFG = GVSCI_FFG,
+         HABIT = GVSCI_Habit, 
+         PTV = GVSCI_TolVal) %>% 
+  #mutate(TAXA_ID = 1:n()) %>%  # give numeric unique identifier
+  mutate_if(is.character, str_to_upper) %>% # package needs uppercase taxa names
+  
+  # recode FFG to desired format: CF=collector-filterer, CG=collector-gatherer,PA=parasite,PI=Piercer,PR=predator,SC=scraper,SH=shredder
+  mutate(FFG = case_when(FFG == "COLLECTOR" ~ "CG", 
+                         FFG == "SCRAPER" ~ "SC",
+                         FFG == "SHREDDER" ~ "SH",
+                         FFG == "PREDATOR" ~ "PR",
+                         FFG == "FILTERER" ~ "CF",
+                         TRUE ~ as.character(NA)),
+         #  recode HABIT to desired format:  AT=attached,BU=burrower,CB=climber, CN=clinger,DV=diver,PK=planktonic,SK=skater,SP=sprawler,SW=swimmer    
+         HABIT = case_when(HABIT == "SWIMMER" ~ "SW", 
+                           HABIT == "CLINGER" ~ "CN",
+                           HABIT ==  "CLIMBER" ~ "CB",
+                           HABIT == "BURROWER" ~ "BU",
+                           HABIT == "SPRAWLER" ~ "SP",
+                           TRUE ~ as.character(NA))) 
+  
+
+masterTaxaListBCG[ masterTaxaListBCG == "NA" ] <- NA
+
+masterTaxaListBCGTarget <- masterTaxaListBCG %>% 
+  #filter(Target == 1) # this will drop all higher level taxa from joining, not a good idea
+  arrange(GVSCI_FinalID, Target) %>% 
+  distinct(GVSCI_FinalID, .keep_all = T) %>% 
+  rename(TARGET_TAXON = GVSCI_FinalID) %>% 
+  mutate(TAXA_ID = 1:n()) %>% 
+  as.data.frame()
+
+bonusMetrics <- IBImetrics(benthicsPrep, masterTaxaListBCGTarget)
+```
+
+
+
+
+
 Write .xlsx with different sheets for types of metrics
 
 ```{r}
@@ -371,8 +443,9 @@ outBensamps <- benSamps %>% dplyr::select(StationID, BenSampID , RepNum, `Collec
 
 list_of_datasets <- list("BenSamps" = outBensamps, "Taxa Metrics" = outTax, 
                          "Tolerance Metrics" = outTol, "FFG Metrics" = ffgMet, 
-                         "Habit Metrics" = habitMet, "Dominance Metrics" = domMet)
-write.xlsx(list_of_datasets, file = "data/aquametBioDataOut/aquametBio_run200_02012022.xlsx")
+                         "Habit Metrics" = habitMet, "Dominance Metrics" = domMet,
+                         "VA Requested Metrics" = bonusMetrics)
+write.xlsx(list_of_datasets, file = "data/aquametBioDataOut/aquametBio_run200_02032022.xlsx")
 
 ```
 
