@@ -199,25 +199,28 @@ IBImetrics <- function(benthicsPrep, masterTaxaListBCGTarget){
     mutate(e=ifelse(ORDER== "EPHEMEROPTERA", 1, 0),
            p=ifelse(ORDER=="PLECOPTERA",1,0),
            t=ifelse(ORDER=="TRICHOPTERA", 1, 0),
-           tmin=ifelse((ORDER=="TRICHOPTERA" & TARGET_TAXON != 'HYDROPSYCHE') , 1, 0),  #View(filter(masterTaxaListBCGTarget, str_detect(TARGET_TAXON, 'HYDROPS')))
+           tmin=ifelse((ORDER=="TRICHOPTERA" & FAMILY != "HYDROPSYCHIDAE") | 
+                         (ORDER=="TRICHOPTERA" & is.na(FAMILY)) , 1, 0), 
            ept=ifelse(e+p+t>0,1,0), 
            scraper = ifelse(FFG=="SC", 1, 0),
            chiro = ifelse(FAMILY=="CHIRONOMIDAE",1, 0),
            ptmin = ifelse(p + tmin > 0,1,0),
-           `clinger-HS` = ifelse(HABIT == 'CN' & TARGET_TAXON != 'HYDROPSYCHE' & FAMILY != "SIMULIIDAE", 1, 0),
+           `clinger-HS` = ifelse(HABIT == 'CN' & ! FAMILY %in% c("HYDROPSYCHIDAE","SIMULIIDAE"), 1, 0),
            
            # new for IBI development
-           `ept-h+c` = ifelse(ept == 1 & TARGET_TAXON != "HYDROPSYCHE" & GENUS != 'CHEUMATOPSYCHE', 1, 0), # removing genus == Cheumatopsyche doesn't matter since it is already filtered with family hydropsychidae & Genus != 'Cheumatopsyche', 1, 0),
+           #c = ifelse(Genus == 'Cheumatopsyche', 1, 0),
+           `ept-h` = ifelse(ept == 1 & FAMILY != "HYDROPSYCHIDAE", 1, 0), # removing genus == Cheumatopsyche doesn't matter since it is already filtered with family hydropsychidae & Genus != 'Cheumatopsyche', 1, 0),
+           #`ept-h+c` = ifelse(`ept-h` > 0 | c > 0, 1 ,0),
            elmid = ifelse(FAMILY == "ELMIDAE", 1, 0),
            `e-b` = ifelse(ORDER=="EPHEMEROPTERA" & FAMILY != "BAETIDAE", 1 , 0),
-           `ept-h-b` = ifelse(ept == 1 & TARGET_TAXON != 'HYDROPSYCHE' & FAMILY != "BAETIDAE", 1, 0),
+           `ept-h-b` = ifelse(ept == 1 & ! FAMILY %in% c("HYDROPSYCHIDAE","BAETIDAE"), 1, 0),
            coll = ifelse(FFG %in% c("CG", "CF"), 1, 0) ) %>%
     
     # BCG metrics are calculated outside this bc the n taxa attributed (denominator for percent metrics) depends on each individual sample
           
     # Then put it in long format so it can be merged to and input taxa list
     dplyr::select(TAXA_ID, TARGET_TAXON, PTV, e,p,t, ept,ptmin, scraper, chiro,`clinger-HS`,
-                  `ept-h+c`, elmid, `e-b`, `ept-h-b`, coll) %>%
+                  `ept-h`, elmid, `e-b`, `ept-h-b`, coll) %>%
     distinct(TARGET_TAXON, .keep_all = T) %>% # drop multiple rows bc working back to family level data from genus
     filter(!is.na(TARGET_TAXON)) %>%
     pivot_longer(-c(TARGET_TAXON, TAXA_ID), names_to = 'metric', values_to = 'metric_val') %>%
