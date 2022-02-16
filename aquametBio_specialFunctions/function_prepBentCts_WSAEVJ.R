@@ -9,11 +9,15 @@ prepBentCts_WSA_EVJ <- function (inCts, inTaxa = bentTaxa_nrsa, sampID = "UID", 
     return(NULL)
   }
   inCts <- subset(inCts, select = c(sampID, ct, taxa_id))
-  if (is.null(inTaxa)) {
+ 
+  ######################################################################
+  # EVJ edit: doesn't make sense, what it bentTaxa?
+   if (is.null(inTaxa)) {
     inTaxa <- bentTaxa
-    inTaxa <- subset(inTaxa, is.na(NON_TARGET) | NON_TARGET == 
-                       "")
-  }
+    inTaxa <- subset(inTaxa, is.na(NON_TARGET) | NON_TARGET == "")
+   }
+  ####################################################################
+  
   necTraits <- c("PHYLUM", "CLASS", "ORDER", "FAMILY", "GENUS", 
                  "TARGET_TAXON", taxa_id)
   if (any(necTraits %nin% names(inTaxa))) {
@@ -30,8 +34,7 @@ prepBentCts_WSA_EVJ <- function (inCts, inTaxa = bentTaxa_nrsa, sampID = "UID", 
   inCts.1$TOTAL <- as.numeric(inCts.1$TOTAL)
   inCts.1 <- inCts.1[inCts.1$TOTAL > 0, ]
   fixTaxa <- with(inCts.1, which(CLASS %in% c("ARACHNIDA", 
-                                              "POLYCHAETA", "OLIGOCHAETA") & !is.na(FAMILY) & FAMILY != 
-                                   ""))
+                                              "POLYCHAETA", "OLIGOCHAETA") & !is.na(FAMILY) & FAMILY != ""))
   inCts.1$TARGET_TAXON[fixTaxa] <- inCts.1$FAMILY[fixTaxa]
   inCts.2 <- merge(inCts.1, subset(inTaxa.1, select = c("TAXA_ID", 
                                                         "TARGET_TAXON")), by = "TARGET_TAXON", all.x = TRUE)

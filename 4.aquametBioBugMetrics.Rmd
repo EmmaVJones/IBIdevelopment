@@ -114,9 +114,22 @@ source('aquametBio_specialFunctions/function_prepBentCts_WSAEVJ.R')
 Bring in master taxa list with genus calls
 
 ```{r}
-masterTaxaList <- read_excel('data/masterTaxaGenus_01132022.xlsx', sheet = 'masterTaxaGenus') %>% # Emma update
+masterTaxaList <- read_excel('data/masterTaxaGenus_01132022_JRH.xlsx',  sheet = 'masterTaxaGenusJRHFeb10') %>%  #change with genus fixes
+  #read_excel('data/masterTaxaGenus_01132022.xlsx', sheet = 'masterTaxaGenus') %>% # Emma update
   mutate_at(c("FamTolVal", "TolVal", "GVSCI_TolVal"), as.numeric) %>% 
   rename(FinalID_FFG = FFG) %>% # fix this before things get confusing
+  
+  # Optioservus fix
+  mutate(Genus = case_when(FinalID == 'Promoresia' ~ 'Promoresia',
+                           TRUE ~ as.character(Genus))) %>% 
+  # Stenonema fix
+  mutate(Genus = case_when(FinalID %in% c("Maccaffertium/Stenonema", "Maccaffertium") ~ "Maccaffertium",
+                           TRUE ~ as.character(Genus)),
+         GVSCI_TolVal = case_when(FinalID %in% c("Maccaffertium/Stenonema", "Maccaffertium") ~ 5.4,
+                           TRUE ~ as.numeric(GVSCI_TolVal)) ) %>% #,
+         # GregVSCI_TolVal2 = case_when(FinalID %in% c("Maccaffertium/Stenonema", "Maccaffertium") ~ 5.4,
+         #                   TRUE ~ as.numeric(GregVSCI_TolVal2))) %>% 
+  
   
   # rename to desired format
   rename(PHYLUM = Phylum, 
@@ -154,6 +167,10 @@ masterTaxaList[ masterTaxaList == "NA" ] <- NA
 masterTaxaListTarget <- masterTaxaList %>% 
   #filter(Target == 1) # this will drop all higher level taxa from joining, not a good idea
   arrange(GVSCI_FinalID, Target) %>% 
+  
+    filter(!is.na(GVSCI_FinalID)) %>% 
+
+  
   distinct(GVSCI_FinalID, .keep_all = T) %>% 
   rename(TARGET_TAXON = GVSCI_FinalID) %>% 
   mutate(TAXA_ID = 1:n()) %>% 
@@ -169,15 +186,92 @@ benSamps <- read.csv('data/aquametBioDataOut/benSamps01132022.csv') %>%
   rename(`Collection Date` = 'Collection.Date',
          "Sample Comments" = "Sample.Comments", 
          "Collected By" = "Collected.By",
-         "Target Count" = "Target.Count")
+         "Target Count" = "Target.Count") %>% 
+  mutate(DataSource = 'VDEQ_BUG',
+         `Collection Date` = as.Date(as.POSIXct(`Collection Date`, format = '%Y-%m-%d %H:%M:%S'))) 
 ```
 
 
-QA bug metrics, limit to just one sample
+Bring in WVA bugs
 
-```{r}
-#benthics <- filter(benthics, BenSampID == 'ABR3814')
+```{r WVA bugs}
+# see WVAbugmetrics.R to verify bug QA
+benSampsWVA <- read_csv('data/dataOut/benthicsVA_WVA.csv') %>% 
+  filter(DataSource == 'WVA_BUG') %>% 
+    mutate(BenSampID = UID) %>%
+  dplyr::select(DataSource, StationID, BenSampID, `Collection Date`, RepNum, Season )
+
+benthicsWVA <- read_csv('data/dataOut/benthicsVA_WVA.csv') %>% 
+  filter(DataSource == 'WVA_BUG') %>% 
+  mutate(BenSampID = UID) %>% 
+  dplyr::select(-c(UID, `Collection DateTime`, RepNum, Season, Year, JulianDate, SampleN)) %>% 
+  group_by(DataSource, StationID, BenSampID, `Collection Date`) %>% 
+  pivot_longer(-c('DataSource', 'StationID', 'BenSampID', 'Collection Date'), names_to = 'FinalID', values_to = 'Individuals') %>% 
+  filter(Individuals > 0) %>% 
+  #rename(BENSAMPID = BenSampID) %>%  # assignDistinct() changes names to caps so adjust here to avoid issues later
+  #mutate(FinalID = as.character(FinalID)) %>% 
+  #mutate_if(is.character, str_to_upper) %>%    # convert names to all caps
+  # convert names to newest taxa list
+  mutate(FinalID = case_when(FinalID == 'Nixe' ~ 'Afghanurus',
+                             FinalID == 'Anchytarsus' ~ 'Anchytarsus bicolor', 
+                             FinalID == 'Stenonema' ~ 'Stenonema femoratum',
+                             TRUE ~ FinalID))
+
 ```
+
+Smash VA and WVA together 
+```{r smash VA WVA bugs}
+benthicsAll <- bind_rows(benthics, benthicsWVA) %>% 
+  dplyr::select(-c(DataSource, `Collection Date`)) %>% 
+  group_by(BenSampID) %>% 
+  mutate(TotalIndividuals = sum(Individuals)) %>% 
+  ungroup()
+
+benSamps <- bind_rows(benSamps, benSampsWVA)
+```
+
+
+# Rarify samples
+
+If a sample has > 220 bugs then subsample back to 200ct
+Repeat this only once as to not change analysis results.
+
+```{r rarify}
+# source("rarify/rarify.r")
+# benthicsFine <- filter(benthicsAll, TotalIndividuals <= 220)
+# benthicsFix <- filter(benthicsAll, TotalIndividuals > 220) 
+# 
+# rarified <- rarify(inbug=data.frame(benthicsFix), sample.ID="BenSampID" , abund="Individuals", subsiz=200) %>% 
+#   filter(Individuals > 0) %>% 
+#   group_by(BenSampID) %>% 
+#   mutate(BenSampID = paste0(BenSampID, '_R200'),
+#     TotalIndividuals = sum(Individuals))
+# 
+# benthics <- bind_rows(benthicsFine, rarified)
+# 
+# # fix benSamps with new BenSampID's
+# benSampsFine <- filter(benSamps, BenSampID %in% benthicsFine$BenSampID)
+# benSampsFix <- filter(benSamps, BenSampID %in% benthicsFix$BenSampID) %>% 
+#    mutate(BenSampID = paste0(BenSampID, '_R200'))
+# 
+# benSamps <- bind_rows(benSampsFine, benSampsFix)
+# 
+# # write.csv(benthics, 'data/aquametBioDataOut/finalBenthics.csv', row.names = F, na = '')
+# # write.csv(benSamps, 'data/aquametBioDataOut/finalBenSamps.csv', row.names = F, na = '')
+# 
+# 
+# rm(benthicsAll);rm(benthicsFine);rm(benthicsFix);rm(benthicsWVA); rm(benSampsWVA); rm(benSampsFine); rm(benSampsFix);rm(benthics); rm(benSamps)
+# rm(rarified)
+```
+
+
+Read in final benthics, bensamps
+
+```{r benthics bensamps}
+benthics <- read_csv('data/aquametBioDataOut/finalBenthics.csv')
+benSamps <- read_csv('data/aquametBioDataOut/finalBenSamps.csv')
+```
+
 
 
 
@@ -187,7 +281,7 @@ Clean bug data for aquametBio analysis
 ```{r}
 benthics <- benthics %>% #[1:6921,] %>% 
   
-  #filter(BenSampID == '3-RAP10109') %>% 
+# filter(BenSampID == 'CUB7141') %>% #'3-RAP10109') %>% 
   
   rename(BENSAMPID = BenSampID) %>%  # assignDistinct() changes names to caps so adjust here to avoid issues later
   mutate(FinalID = as.character(FinalID)) %>% 
@@ -219,9 +313,7 @@ benthicsPrep <- prepBentCts_WSA_EVJ(
 #   ct = "Individuals",
 #   taxa_id ="TAXA_ID"# "FinalID"#"TAXA_ID"
 # )
-# benthics goes from 217948 to 203372 rows
-# saveRDS(benthicsPrep, 'data/aquametBioDataOut/benthicsPrep.RDS')
-# review this monday
+
 ```
 
 
@@ -250,7 +342,7 @@ benthicsPrep3 <- left_join(benthicsPrep, uniqueBenthics, by = 'BENSAMPID') %>%
   filter(uniqueBenSampID %in% c(3383:5073)) %>% 
   dplyr::select(-uniqueBenSampID)
 benthicsPrep4 <- left_join(benthicsPrep, uniqueBenthics, by = 'BENSAMPID') %>% 
-  filter(uniqueBenSampID %in% c(5074:6767)) %>% 
+  filter(uniqueBenSampID %in% c(5074:nrow(uniqueBenthics))) %>% 
   dplyr::select(-uniqueBenSampID)
 
 ```
@@ -381,6 +473,22 @@ masterTaxaListBCG <- read_excel('data/masterTaxaGenus_01132022.xlsx', sheet = 'm
   mutate_at(c("FamTolVal", "TolVal", "GVSCI_TolVal"), as.numeric) %>% 
   rename(FinalID_FFG = FFG) %>% # fix this before things get confusing
   
+  
+   # Optioservus fix
+  mutate(Genus = case_when(FinalID == 'Promoresia' ~ 'Promoresia',
+                           TRUE ~ as.character(Genus))) %>% 
+  
+   # Stenonema fix
+  mutate(Genus = case_when(FinalID %in% c("Maccaffertium/Stenonema", "Maccaffertium") ~ "Maccaffertium",
+                           TRUE ~ as.character(Genus)),
+         GVSCI_TolVal = case_when(FinalID %in% c("Maccaffertium/Stenonema", "Maccaffertium") ~ 5.4,
+                           TRUE ~ as.numeric(GVSCI_TolVal)) ) %>% #,
+         # GregVSCI_TolVal2 = case_when(FinalID %in% c("Maccaffertium/Stenonema", "Maccaffertium") ~ 5.4,
+         #                   TRUE ~ as.numeric(GregVSCI_TolVal2))) %>% 
+         # 
+
+
+  
   # add BCG information
   left_join(BCG, by = c('OldFinalID' = 'FinalID', 'GVSCI_FinalID' = 'GenusFinal')) %>% 
   
@@ -430,8 +538,230 @@ masterTaxaListBCGTarget <- masterTaxaListBCG %>%
 bonusMetrics <- IBImetrics(benthicsPrep, masterTaxaListBCGTarget)
 ```
 
+### Quick QA step: Tolerance value reevalutation
+
+Greg suggested we may not have the HBI range we want with our current tolerance value spread (nothing less than 2) so Jason recalululated the "good" BCG tolerance value math to expand the top end (similar to how he had for the bad end) and that info is stored in the GregVSCI_TolVal2 column. 
+
+For this quick test, we will reorganize the benthic data and rerun the tolerance metrics against that dataset. We will need to redo the math for the Tolerance metrics and the "bonus VA metrics" because some of the EPT taxa math includes tolerance thresholds for a few metrics.
+
+```{r redo above with greg tol values}
+masterTaxaList <- read_excel('data/masterTaxaGenus_01132022_JRH.xlsx',  sheet = 'masterTaxaGenusJRHFeb10') %>%  #change with genus fixes
+  #read_excel('data/masterTaxaGenus_01132022.xlsx', sheet = 'masterTaxaGenus') %>% # Emma update
+  mutate_at(c("FamTolVal", "TolVal", "GVSCI_TolVal", 'GregVSCI_TolVal2'), as.numeric) %>% 
+  rename(FinalID_FFG = FFG) %>% # fix this before things get confusing
+  
+  # Optioservus fix
+  mutate(Genus = case_when(FinalID == 'Promoresia' ~ 'Promoresia',
+                           TRUE ~ as.character(Genus))) %>% 
+  
+   # Stenonema fix
+  mutate(Genus = case_when(FinalID %in% c("Maccaffertium/Stenonema", "Maccaffertium") ~ "Maccaffertium",
+                           TRUE ~ as.character(Genus)),
+         # GVSCI_TolVal = case_when(FinalID %in% c("Maccaffertium/Stenonema", "Maccaffertium") ~ 5.4,
+         #                   TRUE ~ as.numeric(GVSCI_TolVal)),
+         GregVSCI_TolVal2 = case_when(FinalID %in% c("Maccaffertium/Stenonema", "Maccaffertium") ~ 5.4,
+                           TRUE ~ as.numeric(GregVSCI_TolVal2))) %>% 
+  
+
+  
+  # rename to desired format
+  rename(PHYLUM = Phylum, 
+         CLASS = Class,
+         ORDER = Order, 
+         FAMILY = Family,
+         SUBFAMILY = Subfamily, 
+         TRIBE = Tribe, 
+         GENUS = Genus,
+         # use genus level bugs for metrics
+         #TARGET_TAXON = GVSCI_FinalID,
+         FFG = GVSCI_FFG,
+         HABIT = GVSCI_Habit, 
+         
+         ### Note change to greg tol value
+         
+         PTV = GregVSCI_TolVal2) %>% 
+  #mutate(TAXA_ID = 1:n()) %>%  # give numeric unique identifier
+  mutate_if(is.character, str_to_upper) %>% # package needs uppercase taxa names
+  
+  # recode FFG to desired format: CF=collector-filterer, CG=collector-gatherer,PA=parasite,PI=Piercer,PR=predator,SC=scraper,SH=shredder
+  mutate(FFG = case_when(FFG == "COLLECTOR" ~ "CG", 
+                         FFG == "SCRAPER" ~ "SC",
+                         FFG == "SHREDDER" ~ "SH",
+                         FFG == "PREDATOR" ~ "PR",
+                         FFG == "FILTERER" ~ "CF",
+                         TRUE ~ as.character(NA)),
+ #  recode HABIT to desired format:  AT=attached,BU=burrower,CB=climber, CN=clinger,DV=diver,PK=planktonic,SK=skater,SP=sprawler,SW=swimmer    
+         HABIT = case_when(HABIT == "SWIMMER" ~ "SW", 
+                           HABIT == "CLINGER" ~ "CN",
+                           HABIT ==  "CLIMBER" ~ "CB",
+                           HABIT == "BURROWER" ~ "BU",
+                           HABIT == "SPRAWLER" ~ "SP",
+                           TRUE ~ as.character(NA))) 
+    
+masterTaxaList[ masterTaxaList == "NA" ] <- NA
+
+masterTaxaListTarget <- masterTaxaList %>% 
+  #filter(Target == 1) # this will drop all higher level taxa from joining, not a good idea
+  arrange(GVSCI_FinalID, Target) %>% 
+  
+    filter(!is.na(GVSCI_FinalID)) %>% 
+
+  
+  distinct(GVSCI_FinalID, .keep_all = T) %>% 
+  rename(TARGET_TAXON = GVSCI_FinalID) %>% 
+  mutate(TAXA_ID = 1:n()) %>% 
+  as.data.frame()
+  #rowwise() %>% 
+  #mutate(TAXA_ID = sum(3000, TAXA_ID))
 
 
+
+benthics <- read_csv('data/aquametBioDataOut/finalBenthics.csv')
+  #read.csv('data/aquametBioDataOut/benthics01132022.csv') 
+
+benthics <- benthics %>% #[1:6921,] %>% 
+  
+  #filter(BenSampID == '3-RAP10109') %>% #'CUB7141') %>% #
+  
+  rename(BENSAMPID = BenSampID) %>%  # assignDistinct() changes names to caps so adjust here to avoid issues later
+  mutate(FinalID = as.character(FinalID)) %>% 
+  mutate_if(is.character, str_to_upper) %>%   # convert names to all caps
+  
+  ## join to full master taxa list
+  #left_join(dplyr::select(masterTaxaList, FinalID, TARGET_TAXON, TAXA_ID),  by = "FinalID")
+  left_join(dplyr::select(masterTaxaList, FinalID, GVSCI_FinalID#TARGET_TAXON),  by = "FinalID")
+  ),  by = "FinalID") %>% 
+  # join to target level master taxa list for unique TAXA_ID
+  left_join(dplyr::select(masterTaxaListTarget, TARGET_TAXON, TAXA_ID),  by = c("GVSCI_FinalID" = 'TARGET_TAXON')) #"FinalID"
+ # left_join(dplyr::select(masterTaxaListTarget, FinalID, TARGET_TAXON, TAXA_ID),  by = "FinalID")
+  
+
+  
+benthicsPrep <- prepBentCts_WSA_EVJ(
+  inCts = benthics,
+  inTaxa = masterTaxaListTarget,
+  sampID = "BENSAMPID",
+  ct = "Individuals",
+  taxa_id ="TAXA_ID"# "FinalID"#"TAXA_ID"
+)
+
+
+### aquametbio tol metrics with greg tol value
+outTolGreg <- calcBentTolMets(benthicsPrep,
+                          masterTaxaListTarget,
+                          sampID="BENSAMPID",
+                          dist='IS_DISTINCT',
+                          ct='TOTAL',
+                          ptv='PTV')
+
+## va metrics with greg tol value
+BCG <- read_excel('data/MASTER_ATTRIBUTES_BUGS_06062019.xlsx', sheet = 'Sheet1') %>% 
+  dplyr::select(FinalID, GenusFinal, BCGattribute = `Virginia General BCG Attribute   First Choice`, 
+                `BCG DisOxy`:`BCG pctIMP`) %>% 
+  mutate_at(c("BCGattribute", "BCG DisOxy", "BCG acidity", "BCG Alkalinity", "BCG spCond", "BCG Chloride", 
+              "BCG Sulfate", "BCG TN.TP",  "BCG totHab", "BCG RBS", "BCG pctIMP"), as.numeric) %>% 
+  mutate(BCGattribute = case_when(BCGattribute == 0 ~ as.numeric(NA),
+                                  TRUE ~ BCGattribute))
+
+masterTaxaListBCG <- read_excel('data/masterTaxaGenus_01132022_JRH.xlsx',  sheet = 'masterTaxaGenusJRHFeb10') %>%  #change with genus fixes
+  #read_excel('data/masterTaxaGenus_01132022.xlsx', sheet = 'masterTaxaGenus') %>% # Emma update
+  mutate_at(c("FamTolVal", "TolVal", "GVSCI_TolVal", 'GregVSCI_TolVal2'), as.numeric) %>% 
+  rename(FinalID_FFG = FFG) %>% # fix this before things get confusing
+  
+   # Optioservus fix
+  mutate(Genus = case_when(FinalID == 'Promoresia' ~ 'Promoresia',
+                           TRUE ~ as.character(Genus))) %>% 
+  
+   # Stenonema fix
+  mutate(Genus = case_when(FinalID %in% c("Maccaffertium/Stenonema", "Maccaffertium") ~ "Maccaffertium",
+                           TRUE ~ as.character(Genus)),
+         # GVSCI_TolVal = case_when(FinalID %in% c("Maccaffertium/Stenonema", "Maccaffertium") ~ 5.4,
+         #                   TRUE ~ as.numeric(GVSCI_TolVal)),
+         GregVSCI_TolVal2 = case_when(FinalID %in% c("Maccaffertium/Stenonema", "Maccaffertium") ~ 5.4,
+                           TRUE ~ as.numeric(GregVSCI_TolVal2))) %>% 
+
+  
+  # add BCG information
+  left_join(BCG, by = c('OldFinalID' = 'FinalID', 'GVSCI_FinalID' = 'GenusFinal')) %>% 
+  
+  
+  # rename to desired format
+  rename(PHYLUM = Phylum, 
+         CLASS = Class,
+         ORDER = Order, 
+         FAMILY = Family,
+         SUBFAMILY = Subfamily, 
+         TRIBE = Tribe, 
+         GENUS = Genus,
+         # use genus level bugs for metrics
+         #TARGET_TAXON = GVSCI_FinalID,
+         FFG = GVSCI_FFG,
+         HABIT = GVSCI_Habit, 
+         
+         
+         
+         ### Note change to greg tol value
+         
+         PTV = GregVSCI_TolVal2) %>% 
+  #mutate(TAXA_ID = 1:n()) %>%  # give numeric unique identifier
+  mutate_if(is.character, str_to_upper) %>% # package needs uppercase taxa names
+  
+  # recode FFG to desired format: CF=collector-filterer, CG=collector-gatherer,PA=parasite,PI=Piercer,PR=predator,SC=scraper,SH=shredder
+  mutate(FFG = case_when(FFG == "COLLECTOR" ~ "CG", 
+                         FFG == "SCRAPER" ~ "SC",
+                         FFG == "SHREDDER" ~ "SH",
+                         FFG == "PREDATOR" ~ "PR",
+                         FFG == "FILTERER" ~ "CF",
+                         TRUE ~ as.character(NA)),
+         #  recode HABIT to desired format:  AT=attached,BU=burrower,CB=climber, CN=clinger,DV=diver,PK=planktonic,SK=skater,SP=sprawler,SW=swimmer    
+         HABIT = case_when(HABIT == "SWIMMER" ~ "SW", 
+                           HABIT == "CLINGER" ~ "CN",
+                           HABIT ==  "CLIMBER" ~ "CB",
+                           HABIT == "BURROWER" ~ "BU",
+                           HABIT == "SPRAWLER" ~ "SP",
+                           TRUE ~ as.character(NA))) 
+  
+
+masterTaxaListBCG[ masterTaxaListBCG == "NA" ] <- NA
+
+masterTaxaListBCGTarget <- masterTaxaListBCG %>% 
+  #filter(Target == 1) # this will drop all higher level taxa from joining, not a good idea
+  arrange(GVSCI_FinalID, Target) %>% 
+  distinct(GVSCI_FinalID, .keep_all = T) %>% 
+  rename(TARGET_TAXON = GVSCI_FinalID) %>% 
+  mutate(TAXA_ID = 1:n()) %>% 
+  as.data.frame()
+
+bonusMetricsGreg <- IBImetrics(benthicsPrep, masterTaxaListBCGTarget)
+
+
+
+```
+
+
+Some quick mutations to make comparison easier
+
+```{r greg mutations}
+tolCompare <- bind_rows(outTol %>% mutate(Source = 'Original') %>% dplyr::select(Source, everything()),
+                        outTolGreg %>% mutate(Source = 'Greg') %>% dplyr::select(Source, everything())) %>% 
+  arrange(BENSAMPID, Source)
+
+vaCompare <- bind_rows(bonusMetrics %>% mutate(Source = 'Original') %>% dplyr::select(Source, everything()),
+                       bonusMetricsGreg %>% mutate(Source = 'Greg') %>% dplyr::select(Source, everything())) %>% 
+  arrange(BENSAMPID, Source)
+```
+
+
+
+### Add sheet with reference/stress site info to final dataset
+
+For model development
+
+```{r ref/stress info}
+refstress <- read_excel('data/RefSitesSourceGIS.xlsx', sheet = 'AllBugGenus') %>% 
+  mutate(JRH_Calls = case_when(JRH_Calls ==  "Ref-Pied" ~ "Ref",
+                               TRUE ~ JRH_Calls)) # collapse piedmont ref to ref for this exercise
+```
 
 
 Write .xlsx with different sheets for types of metrics
@@ -439,13 +769,53 @@ Write .xlsx with different sheets for types of metrics
 ```{r}
 library(openxlsx)
 outBensamps <- benSamps %>% dplyr::select(StationID, BenSampID , RepNum, `Collection Date`, `Sample Comments`,
-                                          `Collected By`, Taxonomist, Gradient, `Target Count`, Season, everything())
+                                          `Collected By`, Taxonomist, Gradient, `Target Count`, Season, everything()) %>% 
+  left_join(refstress %>% 
+              dplyr::select(StationID, RefStress = JRH_Calls) %>% 
+              distinct(StationID, .keep_all = T), by = 'StationID' ) %>% 
+  dplyr::select(DataSource, RefStress, everything())
 
-list_of_datasets <- list("BenSamps" = outBensamps, "Taxa Metrics" = outTax, 
-                         "Tolerance Metrics" = outTol, "FFG Metrics" = ffgMet, 
-                         "Habit Metrics" = habitMet, "Dominance Metrics" = domMet,
-                         "VA Requested Metrics" = bonusMetrics)
-write.xlsx(list_of_datasets, file = "data/aquametBioDataOut/aquametBio_run200_02042022.xlsx")
+list_of_datasets <- list("BenthicsRarified" = benthics,
+                         "BenSamps" = outBensamps, 
+                         "Taxa Metrics" = outTax, 
+                         "Tolerance Metrics" = outTol, 
+                         "Tolerance Metrics_GREG" = outTolGreg, 
+                         "Tolerance Metrics Comparison" = tolCompare,
+                         "FFG Metrics" = ffgMet, 
+                         "Habit Metrics" = habitMet,
+                         "Dominance Metrics" = domMet,
+                         "VA Requested Metrics" = bonusMetrics,
+                         "VA Requested Metrics_GREG" = bonusMetricsGreg,
+                         "VA Requested metrics Comparison" = vaCompare)
+write.xlsx(list_of_datasets, file = "data/aquametBioDataOut/aquametBio_final_02162022.xlsx")
 
 ```
+
+
+
+plot greg vs reg tol break
+
+```{r}
+
+compare <- left_join(vaCompare, outBensamps, by = c('BENSAMPID' = 'BenSampID')) %>% 
+  mutate(Source = as.factor(Source)) 
+  
+ggplot(compare, aes(x = RefStress, y = `Genus HBI` , colour = Source ) )+
+   geom_boxplot()
+
+ggplot(compare %>% filter(RefStress %in% c('Ref', "Str")), aes(x = RefStress, y = `Genus HBI` , colour = Source ) )+
+   geom_boxplot()
+```
+
+How many samples with <50 bugs, > 220, etc
+
+```{r understand data} 
+test <- left_join(outTax, outBensamps, by = c('BENSAMPID' = 'BenSampID')) %>% 
+  #filter(RefStress == 'Ref') %>% 
+  filter(TOTLNIND > 220) %>% 
+  dplyr::select(StationID, `Collection Date`, everything())
+
+```
+
+
 

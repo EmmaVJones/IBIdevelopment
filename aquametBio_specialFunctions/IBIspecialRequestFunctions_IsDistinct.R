@@ -259,12 +259,24 @@ IBImetrics <- function(benthicsPrep, masterTaxaListBCGTarget){
                                    filter(!is.na(PTV)) %>% 
                                    mutate(total = n()) %>% 
                                    filter(ORDER %in% c("EPHEMEROPTERA", "PLECOPTERA", "TRICHOPTERA")) %>% 
-                                   filter(PTV <= 4.2) %>% 
-                                   summarise(metric = 'ept4.2',
+                                   filter(PTV <= 4.5) %>% 
+                                   summarise(metric = 'ept4.5',
                                              metrich = n(),
                                              total = total,
                                              metprop = metrich / total) %>% # why isn't this summarizing??
-                                   distinct(BENSAMPID, .keep_all = T), 'ept4.2', percent = T, 'EPT4.2')) %>% 
+                                   distinct(BENSAMPID, .keep_all = T), 'ept4.5', percent = T, 'EPT4.5')) %>% 
+      # long form here since there is a variable denominator
+      left_join(summaryStressNEW(left_join(benthicsPrep, masterTaxaListBCGTarget, by = 'TAXA_ID') %>% 
+                                   group_by(BENSAMPID) %>% 
+                                   filter(!is.na(PTV)) %>% 
+                                   mutate(total = n()) %>% 
+                                   filter(ORDER %in% c("EPHEMEROPTERA", "PLECOPTERA", "TRICHOPTERA")) %>% 
+                                   filter(PTV <= 6.5) %>% 
+                                   summarise(metric = 'ept6.5',
+                                             metrich = n(),
+                                             total = total,
+                                             metprop = metrich / total) %>% # why isn't this summarizing??
+                                   distinct(BENSAMPID, .keep_all = T), 'ept6.5', percent = T, 'EPT6.5')) %>% 
       left_join(summaryStressNEW(BCGmath(BCGorg, 'BCGattribute', 'BCGatt2&3', c(2,3)), 'BCGatt2&3', percent = F, 'BCGatt2&3')) %>%
       left_join(summaryStressNEW(BCGmath(BCGorg, 'BCGattribute', 'BCGatt2&3', c(2,3)), 'BCGatt2&3', percent = T, 'BCGatt2&3')) %>%
       left_join(summaryStressNEW(BCGmath(BCGorg, 'BCGattribute', 'att5', c(5)), 'att5', percent = F, 'BCGatt5')) %>%
