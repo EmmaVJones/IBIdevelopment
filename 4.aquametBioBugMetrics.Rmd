@@ -764,6 +764,10 @@ refstress <- read_excel('data/RefSitesSourceGIS.xlsx', sheet = 'AllBugGenus') %>
 ```
 
 
+
+## for review
+
+
 Write .xlsx with different sheets for types of metrics
 
 ```{r}
@@ -792,6 +796,105 @@ write.xlsx(list_of_datasets, file = "data/aquametBioDataOut/aquametBio_final_021
 ```
 
 
+## for model development 
+Organize VA bonus metrics into appropriate metric categories
+
+```{r}
+# get one object to select from to make life easier. paste greg in front of metrics that use that tol value scale
+allMetrics <- left_join(outTax, outTol, by = 'BENSAMPID') %>% 
+  left_join(ffgMet, by = 'BENSAMPID') %>%
+  left_join(outTolGreg %>% setNames(paste0('gregTol_', names(.))), by = c('BENSAMPID' = 'gregTol_BENSAMPID')) %>%
+  left_join(habitMet, by = 'BENSAMPID') %>%
+  left_join(domMet, by = 'BENSAMPID') %>%
+  left_join(bonusMetrics, by = 'BENSAMPID') %>% 
+  left_join(bonusMetricsGreg %>% setNames(paste0('gregTol_', names(.))), by = c('BENSAMPID' = 'gregTol_BENSAMPID')) 
+
+# slim list for easy sorting
+finalMetrics <- outTax %>% 
+  left_join(bonusMetrics, by = 'BENSAMPID') %>% 
+  left_join(bonusMetricsGreg %>% setNames(paste0('gregTol_', names(.))), by = c('BENSAMPID' = 'gregTol_BENSAMPID')) 
+
+composition <- dplyr::select(finalMetrics, BENSAMPID, 
+                             AMPHPIND, AMPHPTAX, CHIRPIND, CHIRPTAX, CRUSPIND, CRUSPTAX, DIPTPIND, DIPTPTAX, EPHEPIND, EPHEPTAX,
+                             EPOTPIND, EPOTPTAX, EPT_PIND, EPT_PTAX, HEMIPIND, HEMIPTAX, MITEPIND, MITEPTAX, MOLLPIND, MOLLPTAX,
+                             NOINPIND, NOINPTAX, ODONPIND, ODONPTAX, OLLEPIND, OLLEPTAX, ORTHPIND, ORTHPTAX, PLECPIND, PLECPTAX,
+                             TANYPIND, TANYPTAX, TRICPIND, TRICPTAX, TUBINAIDPIND, TUBINAIDPTAX,
+                             `%Ephem`, `%PT - Hydropsychidae`,  `%GenusScraper`, `%Chiro`, `%EPT-H+C`, `%Ephem-B`,
+                             `%EPT4.5`,	`%EPT6.5`,
+                             `gregTol_%Ephem`, `gregTol_%PT - Hydropsychidae`, `gregTol_%GenusScraper`, `gregTol_%Chiro`, 
+                             `gregTol_%EPT-H+C`, `gregTol_%Ephem-B`,  `gregTol_%EPT4.5`,	`gregTol_%EPT6.5`)
+richness <- dplyr::select(finalMetrics, BENSAMPID,
+                          TOTLNTAX,	AMPHNTAX,	CHIRNTAX,	CRUSNTAX,	DIPTNTAX,	EPHENTAX,	EPOTNTAX,	EPT_NTAX,	HEMINTAX,	MITENTAX,	
+                          MOLLNTAX,	NOINNTAX,	ODONNTAX,	OLLENTAX,	ORTHNTAX,	PLECNTAX,	TANYNTAX,	TRICNTAX,	TUBINAIDNTAX,
+                          `Genus Total Taxa`, `Genus EPT Taxa`, Elmid,
+                          `gregTol_Genus Total Taxa`, `gregTol_Genus EPT Taxa`, gregTol_Elmid)
+tolerance <- left_join(outTol, outTolGreg %>% setNames(paste0('gregTol_', names(.))), by = c('BENSAMPID' = 'gregTol_BENSAMPID')) %>% 
+  left_join(bonusMetrics %>% 
+              dplyr::select(BENSAMPID, `Genus HBI`, 	`BCGatt2&3`,	`%BCGatt2&3`,	BCGatt5,	`%BCGatt5`,	`%BCG_DO_att2&3`,	`%BCG_DO_att5`,
+                            `%BCG_Acidity_att2&3`,	`%BCG_Acidity_att5`,	`%BCG_Alkalinity_att2&3`,	`%BCG_Alkalinity_att5`,	`%BCG_spCond_att2&3`,
+                            `%BCG_spCond_att5`,	`%BCG_Chloride_att2&3`,	`%BCG_Chloride_att5`,	`%BCG_Sulfate_att2&3`,	`%BCG_Sulfate_att5`,
+                            `%BCG_TN.TP_att2&3`,	`%BCG_TN.TP_att5`,	`%BCG_totHab_att2&3`,	`%BCG_totHab_att5`,	`%BCG_RBS_att2&3`,
+                            `%BCG_RBS_att5`,	`%BCG_pctIMP_att2&3`,	`%BCG_pctIMP_att5`), by = 'BENSAMPID') %>% 
+  left_join(bonusMetricsGreg %>% 
+              setNames(paste0('gregTol_', names(.))) %>% 
+              dplyr::select(gregTol_BENSAMPID, `gregTol_Genus HBI`, `gregTol_BCGatt2&3`,
+                            `gregTol_%BCGatt2&3`,	gregTol_BCGatt5,	`gregTol_%BCGatt5`,	`gregTol_%BCG_DO_att2&3`,	`gregTol_%BCG_DO_att5`,
+                            `gregTol_%BCG_Acidity_att2&3`,	`gregTol_%BCG_Acidity_att5`,	`gregTol_%BCG_Alkalinity_att2&3`,	
+                            `gregTol_%BCG_Alkalinity_att5`,	`gregTol_%BCG_spCond_att2&3`, `gregTol_%BCG_spCond_att5`,
+                            `gregTol_%BCG_Chloride_att2&3`,	`gregTol_%BCG_Chloride_att5`,	`gregTol_%BCG_Sulfate_att2&3`,	`gregTol_%BCG_Sulfate_att5`,
+                            `gregTol_%BCG_TN.TP_att2&3`,	`gregTol_%BCG_TN.TP_att5`,	`gregTol_%BCG_totHab_att2&3`,	`gregTol_%BCG_totHab_att5`,
+                            `gregTol_%BCG_RBS_att2&3`, `gregTol_%BCG_RBS_att5`,	`gregTol_%BCG_pctIMP_att2&3`,	`gregTol_%BCG_pctIMP_att5`),
+            by = c('BENSAMPID' = 'gregTol_BENSAMPID')) 
+dominance <- left_join(domMet, bonusMetrics %>% dplyr::select(BENSAMPID, `Genus %2 Dominant`), by = 'BENSAMPID') %>% 
+  left_join(bonusMetricsGreg %>% 
+              setNames(paste0('gregTol_', names(.))) %>% 
+              dplyr::select(gregTol_BENSAMPID, `gregTol_Genus %2 Dominant`), by = c('BENSAMPID' = 'gregTol_BENSAMPID')) 
+ffg <- left_join(ffgMet, bonusMetrics %>% 
+                   dplyr::select(BENSAMPID, `%Collector` ), by = 'BENSAMPID') %>% 
+  left_join(bonusMetricsGreg %>% 
+              setNames(paste0('gregTol_', names(.))) %>% 
+              dplyr::select(gregTol_BENSAMPID, `gregTol_%Collector`), by =  c('BENSAMPID' = 'gregTol_BENSAMPID'))
+habit <- left_join(habitMet, bonusMetrics %>% 
+                   dplyr::select(BENSAMPID, `%Clinger-HS`), by = 'BENSAMPID') %>% 
+  left_join(bonusMetricsGreg %>% 
+              setNames(paste0('gregTol_', names(.))) %>% 
+              dplyr::select(gregTol_BENSAMPID, `gregTol_%Clinger-HS` ), by =  c('BENSAMPID' = 'gregTol_BENSAMPID'))
+
+
+# make sure no metrics left behind
+outMets <- left_join(composition, richness, by = 'BENSAMPID') %>% 
+  left_join(tolerance, by = 'BENSAMPID') %>% 
+  left_join(dominance, by = 'BENSAMPID') %>% 
+  left_join(habit, by = 'BENSAMPID') %>% 
+  left_join(ffg, by = 'BENSAMPID') 
+
+ names(allMetrics)[! names(allMetrics) %in% names(outMets)]
+#"TOTLNIND"  only metric left and that's fine to drop!
+
+
+library(openxlsx)
+outBensamps <- benSamps %>% dplyr::select(StationID, BenSampID , RepNum, `Collection Date`, `Sample Comments`,
+                                          `Collected By`, Taxonomist, Gradient, `Target Count`, Season, everything()) %>% 
+  left_join(refstress %>% 
+              dplyr::select(StationID, RefStress = JRH_Calls) %>% 
+              distinct(StationID, .keep_all = T), by = 'StationID' ) %>% 
+  dplyr::select(DataSource, RefStress, everything())
+
+list_of_datasets <- list("BenSamps" = outBensamps, 
+                         "Composition" = composition, 
+                         "Richness" = richness, 
+                         "Tolerance" = tolerance, 
+                         "Dominance" = dominance,
+                         "Habit" = habit, 
+                         "FFG" = ffg)
+write.xlsx(list_of_datasets, file = "data/aquametBioDataOut/aquametBio_final_02222022.xlsx")
+
+```
+
+
+
+
+
 
 plot greg vs reg tol break
 
@@ -806,6 +909,28 @@ ggplot(compare, aes(x = RefStress, y = `Genus HBI` , colour = Source ) )+
 ggplot(compare %>% filter(RefStress %in% c('Ref', "Str")), aes(x = RefStress, y = `Genus HBI` , colour = Source ) )+
    geom_boxplot()
 ```
+
+
+More interactive version
+
+
+```{r}
+library(esquisse)
+esquisser(compare)
+```
+```{r}
+# library(tidyverse)
+# library(readxl)
+# library(esquisse)
+# vaCompare <- read_excel("data/aquametBioDataOut/aquametBio_final_02162022.xlsx", sheet = 'VA Requested metrics Comparison')
+# outBensamps<- read_excel("data/aquametBioDataOut/aquametBio_final_02162022.xlsx", sheet = 'BenSamps')
+# compare <- left_join(vaCompare, outBensamps, by = c('BENSAMPID' = 'BenSampID')) %>%
+#   mutate(Source = as.factor(Source))
+# 
+# esquisser(compare)
+
+```
+
 
 How many samples with <50 bugs, > 220, etc
 

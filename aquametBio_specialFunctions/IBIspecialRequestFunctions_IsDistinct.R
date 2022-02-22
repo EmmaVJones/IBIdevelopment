@@ -247,6 +247,8 @@ IBImetrics <- function(benthicsPrep, masterTaxaListBCGTarget){
       left_join(summaryStressNEW(metpropNEW, 'ptmin', T, 'PT - Hydropsychidae')) %>% 
       left_join(summaryStressNEW(metpropNEW,'scraper', T, 'GenusScraper')) %>% 
       left_join(summaryStressNEW(metpropNEW,'chiro', T, 'Chiro')) %>%
+      left_join(summaryStressNEW(metpropNEW,'clinger-HS', T, 'Clinger-HS')) %>%
+      left_join(summaryStressNEW(metpropNEW,'coll', T, 'Collector')) %>%
       left_join(pDom2NEW(benthicsPrep, bugtotalsNEW,'Genus %2 Dominant')) %>%
       left_join(hilsindexNEW(benthicsPrep,hiltaxNEW,'Genus HBI')) %>% 
       # new metrics
